@@ -8,12 +8,12 @@ persistentvolumeclaim/web-data created
 
 $ kubectl -n s13-mini get pvc
 NAME       STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
-web-data   Bound    pvc-93d0e094-8ba9-43a7-baf3-499bd0b4462e   500Mi      RWO            standard       <unset>                 30s
+web-data   Bound    pvc-bee8a596-fb27-4f17-a3a3-8617938cb64f   500Mi      RWO            standard       <unset>                 2s
 
 $ kubectl get storageclass
 NAME                 PROVISIONER                RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION   AGE
-fast-retain          k8s.io/minikube-hostpath   Retain          Immediate           true                   117m
-standard (default)   k8s.io/minikube-hostpath   Delete          Immediate           false                  3h16m
+fast-retain          k8s.io/minikube-hostpath   Retain          Immediate           true                   3h11m
+standard (default)   k8s.io/minikube-hostpath   Delete          Immediate           false                  4h30m
 
 ################ 5.3 Deployment + Service ################
 $ kubectl apply -f 03-mini-project/deployment.yaml -f 03-mini-project/service.yaml
@@ -21,7 +21,6 @@ deployment.apps/web-app created
 service/web-service created
 
 $ kubectl -n s13-mini rollout status deploy/web-app --timeout=240s
-Waiting for deployment spec update to be observed...
 Waiting for deployment "web-app" rollout to finish: 0 out of 2 new replicas have been updated...
 Waiting for deployment "web-app" rollout to finish: 0 of 2 updated replicas are available...
 Waiting for deployment "web-app" rollout to finish: 1 of 2 updated replicas are available...
@@ -29,16 +28,16 @@ deployment "web-app" successfully rolled out
 
 $ kubectl -n s13-mini get pods -o wide
 NAME                      READY   STATUS    RESTARTS   AGE   IP            NODE       NOMINATED NODE   READINESS GATES
-web-app-d45775485-pzvng   1/1     Running   0          24s   10.244.0.55   minikube   <none>           <none>
-web-app-d45775485-vlx9j   1/1     Running   0          24s   10.244.0.54   minikube   <none>           <none>
+web-app-d45775485-jrc82   1/1     Running   0          9s    10.244.0.89   minikube   <none>           <none>
+web-app-d45775485-wzcw2   1/1     Running   0          9s    10.244.0.90   minikube   <none>           <none>
 
 $ kubectl -n s13-mini get svc web-service && kubectl -n s13-mini get endpointslices -l kubernetes.io/service-name=web-service
-NAME          TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
-web-service   ClusterIP   10.111.231.18   <none>        80/TCP    25s
+NAME          TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
+web-service   ClusterIP   10.104.120.220   <none>        80/TCP    9s
 NAME                ADDRESSTYPE   PORTS   ENDPOINTS                 AGE
-web-service-xqh65   IPv4          80      10.244.0.55,10.244.0.54   25s
+web-service-d464r   IPv4          80      10.244.0.89,10.244.0.90   9s
 
-$ kubectl -n s13-mini describe pod web-app-d45775485-pzvng | grep -E '^    (Startup|Readiness|Liveness):|Requests:|Limits:|cpu:|memory:|/data from'
+$ kubectl -n s13-mini describe pod web-app-d45775485-jrc82 | grep -E '^    (Startup|Readiness|Liveness):|Requests:|Limits:|cpu:|memory:|/data from'
     Limits:
       cpu:     200m
       memory:  128Mi
@@ -55,6 +54,104 @@ $ kubectl apply -f 03-mini-project/hpa.yaml
 horizontalpodautoscaler.autoscaling/web-app-hpa created
 
 # waiting for metrics-server to report CPU for the Pods...
-error: Get "https://127.0.0.1:32771/apis/autoscaling/v2/namespaces/s13-mini/horizontalpodautoscalers/web-app-hpa": net/http: TLS handshake timeout - error from a previous attempt: http2: client connection lost
-Unable to connect to the server: net/http: TLS handshake timeout
-Unable to connect to the server: net/http: TLS handshake timeout
+$ kubectl -n s13-mini get hpa
+NAME          REFERENCE            TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+web-app-hpa   Deployment/web-app   cpu: 1%/50%   2         5         2          2m2s
+
+$ kubectl -n s13-mini top pods
+NAME                      CPU(cores)   MEMORY(bytes)   
+web-app-d45775485-jrc82   1m           14Mi            
+web-app-d45775485-wzcw2   2m           4Mi             
+
+################ Task 1: storage persistence ################
+$ kubectl -n s13-mini exec web-app-d45775485-jrc82 -- sh -c 'echo "Student: Milap Kothari" > /data/student.txt'
+
+$ kubectl -n s13-mini exec web-app-d45775485-jrc82 -- cat /data/student.txt
+Student: Milap Kothari
+
+$ kubectl -n s13-mini exec web-app-d45775485-wzcw2 -- cat /data/student.txt   # the 2nd replica mounts the same PVC (RWO = one NODE; minikube has one)
+Student: Milap Kothari
+
+$ kubectl -n s13-mini delete pod web-app-d45775485-jrc82
+pod "web-app-d45775485-jrc82" deleted from s13-mini namespace
+
+$ kubectl -n s13-mini get pods
+NAME                      READY   STATUS    RESTARTS   AGE
+web-app-d45775485-2zdjf   1/1     Running   0          10s
+web-app-d45775485-wzcw2   1/1     Running   0          2m23s
+
+$ kubectl -n s13-mini exec web-app-d45775485-2zdjf -- cat /data/student.txt
+Student: Milap Kothari
+
+$ kubectl get pv $(kubectl -n s13-mini get pvc web-data -o jsonpath='{.spec.volumeName}') -o custom-columns=PV:.metadata.name,CAPACITY:.spec.capacity.storage,RECLAIM:.spec.persistentVolumeReclaimPolicy,HOSTPATH:.spec.hostPath.path
+PV                                         CAPACITY   RECLAIM   HOSTPATH
+pvc-bee8a596-fb27-4f17-a3a3-8617938cb64f   500Mi      Delete    /tmp/hostpath-provisioner/s13-mini/web-data
+
+################ Task 2: Service verification ################
+$ curl -s http://localhost:18080 | head -4
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+
+$ curl -s -o /dev/null -w "HTTP %{http_code}\n" http://localhost:18080/
+HTTP 200
+
+################ Bonus challenge 2: readiness gating (path /does-not-exist) ################
+$ kubectl -n s13-mini patch deploy web-app --type=json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/readinessProbe/httpGet/path","value":"/does-not-exist"}]'
+deployment.apps/web-app patched
+
+$ kubectl -n s13-mini get pods
+NAME                       READY   STATUS    RESTARTS   AGE
+web-app-5945bfc776-bkjgj   0/1     Running   0          35s
+web-app-5945bfc776-zs669   0/1     Running   0          35s
+
+$ kubectl -n s13-mini get endpoints web-service
+Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
+NAME          ENDPOINTS   AGE
+web-service               3m3s
+
+$ kubectl -n s13-mini get endpointslices -l kubernetes.io/service-name=web-service -o custom-columns=NAME:.metadata.name,ADDRESSES:.endpoints[*].addresses,READY:.endpoints[*].conditions.ready
+NAME                ADDRESSES                     READY
+web-service-d464r   [10.244.0.93],[10.244.0.92]   false,false
+
+$ kubectl -n s13-mini events --for pod/web-app-5945bfc776-bkjgj | grep -i readiness | tail -2
+1s (x6 over 26s)   Warning   Unhealthy   Pod/web-app-5945bfc776-bkjgj   Readiness probe failed: HTTP probe failed with statuscode: 404
+
+# revert
+$ kubectl apply -f 03-mini-project/deployment.yaml && kubectl -n s13-mini rollout status deploy/web-app --timeout=240s
+deployment.apps/web-app configured
+Waiting for deployment spec update to be observed...
+Waiting for deployment "web-app" rollout to finish: 0 out of 2 new replicas have been updated...
+Waiting for deployment "web-app" rollout to finish: 0 out of 2 new replicas have been updated...
+Waiting for deployment "web-app" rollout to finish: 0 out of 2 new replicas have been updated...
+Waiting for deployment "web-app" rollout to finish: 0 out of 2 new replicas have been updated...
+Waiting for deployment "web-app" rollout to finish: 0 of 2 updated replicas are available...
+Waiting for deployment "web-app" rollout to finish: 1 of 2 updated replicas are available...
+deployment "web-app" successfully rolled out
+
+################ Bonus challenge 3: liveness restart loop (path /crash) ################
+$ kubectl -n s13-mini patch deploy web-app --type=json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/livenessProbe/httpGet/path","value":"/crash"}]'
+deployment.apps/web-app patched
+
+$ kubectl -n s13-mini get pods
+NAME                      READY   STATUS    RESTARTS      AGE
+web-app-85d86b65d-ggg79   1/1     Running   3 (15s ago)   75s
+web-app-85d86b65d-kgkxn   1/1     Running   3 (15s ago)   75s
+
+$ kubectl -n s13-mini events --for pod/web-app-85d86b65d-ggg79 | grep -iE 'liveness|Killing' | tail -3
+15s (x3 over 55s)   Normal    Killing     Pod/web-app-85d86b65d-ggg79   Container nginx failed liveness probe, will be restarted
+5s (x10 over 65s)   Warning   Unhealthy   Pod/web-app-85d86b65d-ggg79   Liveness probe failed: HTTP probe failed with statuscode: 404
+
+# revert
+$ kubectl apply -f 03-mini-project/deployment.yaml && kubectl -n s13-mini rollout status deploy/web-app --timeout=240s
+deployment.apps/web-app configured
+Waiting for deployment spec update to be observed...
+Waiting for deployment "web-app" rollout to finish: 0 out of 2 new replicas have been updated...
+Waiting for deployment "web-app" rollout to finish: 0 out of 2 new replicas have been updated...
+Waiting for deployment "web-app" rollout to finish: 0 out of 2 new replicas have been updated...
+Waiting for deployment "web-app" rollout to finish: 0 out of 2 new replicas have been updated...
+Waiting for deployment "web-app" rollout to finish: 0 of 2 updated replicas are available...
+Waiting for deployment "web-app" rollout to finish: 1 of 2 updated replicas are available...
+deployment "web-app" successfully rolled out
+

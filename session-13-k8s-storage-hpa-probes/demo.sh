@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Session 13 demo on minikube. Usage: ./demo.sh [volumes|hpa|mini|coursehpa]
+# Session 13 demo on minikube. Usage: ./demo.sh [volumes|hpa|mini|minihpa|coursehpa]
 cd "$(dirname "$0")"
 run() { echo "\$ $*"; eval "$@" 2>&1; echo; }
-case "${1:-}" in mini|coursehpa) ;; *) kubectl get ns s13 >/dev/null 2>&1 || kubectl create ns s13 >/dev/null;; esac
+case "${1:-}" in mini|minihpa|coursehpa) ;; *) kubectl get ns s13 >/dev/null 2>&1 || kubectl create ns s13 >/dev/null;; esac
 E=01-kubernetes-volumes/examples
 
 volumes() {
@@ -105,7 +105,7 @@ hpa() {
   run 'kubectl -n s13 get pods -l run=php-apache'
 }
 
-hpaline() { kubectl -n $1 get hpa $2 --no-headers | awk '{print $3, $4, $5, $6}'; }
+hpaline() { kubectl -n $1 get hpa $2 --no-headers | awk '{print $3, $4, $5, $6, $7}'; }
 
 mini() {
   M=03-mini-project; N="kubectl -n s13-mini"
@@ -170,19 +170,35 @@ mini() {
   run "kubectl apply -f $M/deployment.yaml && $N rollout status deploy/web-app --timeout=240s"
   for i in $(seq 40); do $N get hpa web-app-hpa --no-headers | grep -q 'cpu: [0-9]' && break; sleep 5; done
 
+}
+
+minihpa() {
+  M=03-mini-project; N="kubectl -n s13-mini"
+  run "kubectl apply -f $M/namespace.yaml -f $M/pvc.yaml -f $M/deployment.yaml -f $M/service.yaml -f $M/hpa.yaml"
+  $N rollout status deploy/web-app --timeout=240s >/dev/null
+  for i in $(seq 40); do $N get hpa web-app-hpa --no-headers | grep -q 'cpu: [0-9]' && break; sleep 5; done
   echo "################ Task 3: trigger HPA scaling ################"
   run "$N get hpa"
   run "$N run load-generator --image=busybox:1.36 --restart=Never -- /bin/sh -c 'while true; do wget -q -O- http://web-service; done'"
-  echo "TIME    TARGETS  MIN MAX REPLICAS   | per-Pod CPU (kubectl top)"
-  T0=$(date +%s)
-  for i in $(seq 13); do
-    top=$($N top pods -l app=web-app --no-headers 2>/dev/null | awk '{printf "%s ", $2}')
-    printf "t+%-5s %s   |  %s\n" "$(( $(date +%s) - T0 ))s" "$(hpaline s13-mini web-app-hpa)" "$top"
-    sleep 20
-  done; echo
+  sample() {  # $1 = number of 20s samples
+    echo "TIME    TARGETS            MIN MAX REPLICAS | per-Pod CPU (kubectl top)"
+    T0=$(date +%s)
+    for i in $(seq $1); do
+      top=$($N top pods -l app=web-app --no-headers 2>/dev/null | awk '{printf "%s ", $2}')
+      printf "t+%-5s %s   |  %s\n" "$(( $(date +%s) - T0 ))s" "$(hpaline s13-mini web-app-hpa)" "$top"
+      sleep 20
+    done; echo
+  }
+  echo "# ---- target 50% (hpa.yaml as given) ----"
+  sample 8
+  run "$N top pods"
+  echo "# One wget loop gives each nginx Pod ~30m CPU = ~30% of its 100m request: below 50%, so the HPA correctly keeps 2 replicas."
+  echo "################ Bonus challenge 1: lower the target to 30% (same load) ################"
+  run "sed 's/averageUtilization: 50/averageUtilization: 30/' $M/hpa.yaml | kubectl apply -f -"
+  sample 9
   run "$N get hpa"
   run "$N get pods -o wide"
-  run "$N describe hpa web-app-hpa | sed -n '/^Events:/,\$p'"
+  run "$N describe hpa web-app-hpa | sed -n '/^Metrics:/,/^Min replicas/p;/^Events:/,\$p'"
   echo "################ Stop the load -> scale down (default 300s stabilization window) ################"
   run "$N delete pod load-generator --now"
   T0=$(date +%s)

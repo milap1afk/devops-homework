@@ -2,7 +2,7 @@
 
 Cluster: **minikube v1.37**, namespace `s14`. Every scenario has a [`broken.yaml`](scenarios) that reproduces a real failure
 and a `fixed.yaml`. [`demo.sh`](demo.sh) applies the broken version, investigates, fixes and verifies
-(`./demo.sh commands` or `./demo.sh 01` … `09`). Each run's full output is in `output-<n>.txt`.
+(`./demo.sh commands`, `./demo.sh 01` … `09`, or `./demo.sh mini` for the mini project). Each run's full output is in `output-<n>.txt`.
 
 **The method used for every issue:** 1) Identify → 2) Investigate → 3) Root cause → 4) Fix → 5) Verify → 6) Document.
 
@@ -170,4 +170,94 @@ Full output: [`output-commands.txt`](output-commands.txt)
 
 ## Task 3: Mini project
 
-> ⏳ **Pending:** the Kubernetes troubleshooting mini project from the course material hasn't been provided to me yet. It will be added here once available.
+Course mini project: **"Kubernetes Troubleshooting Challenge"**, an nginx Deployment (2 replicas) + ClusterIP Service, then a broken Pod
+and a broken Service selector. Files in [`mini-project/`](mini-project):
+
+| File | Source |
+|---|---|
+| [`deployment.yaml`](mini-project/deployment.yaml), [`service.yaml`](mini-project/service.yaml), [`broken-pod.yaml`](mini-project/broken-pod.yaml) | course files, unchanged |
+| [`broken-service.yaml`](mini-project/broken-service.yaml) | step 8 of the course README: selector `app: wrong-app` |
+| [`fixed-pod.yaml`](mini-project/fixed-pod.yaml) | my fix for the broken Pod |
+
+Run: `./demo.sh mini` (namespace `s14-mini`, deleted at the end). Full log: [`output-mini.txt`](output-mini.txt).
+A long-running busybox Pod `tester` acts as the in-cluster client for `wget` and `nslookup`.
+
+### Steps 1-4: deploy and check the healthy application
+
+![mini 1](screenshots/mini-1-deploy-check.png)
+
+- `kubectl get pods -o wide` → 2 Pods `1/1 Running` with IPs `10.244.0.74/75`. `describe pod` → `State: Running`, all Conditions `True`, events `Scheduled → Pulled → Created → Started`.
+- `kubectl logs` → the nginx entrypoint messages. `kubectl exec <pod> -- curl -s localhost` → `<title>Welcome to nginx!</title>` (the README uses `exec -it … -- bash`; I ran it non-interactively so the output could be captured).
+- `describe service troubleshooting-service` → **Selector** `app=troubleshooting-app`, **TargetPort** `80/TCP`, **Endpoints** `10.244.0.74:80,10.244.0.75:80`.
+  `get endpoints` returns the same two Pod IPs (with the Kubernetes 1.33+ warning that `v1 Endpoints` is deprecated in favour of **EndpointSlices**, also shown).
+- From the tester Pod, `wget http://troubleshooting-service` → `Welcome to nginx!`.
+
+### Steps 5-7: the broken Pod
+
+![mini 2](screenshots/mini-2-broken-pod.png)
+
+Investigation, without touching the YAML first:
+```text
+$ kubectl -n s14-mini get pod project-broken-pod
+NAME                 READY   STATUS             RESTARTS   AGE
+project-broken-pod   0/1     ImagePullBackOff   0          19s
+
+$ kubectl -n s14-mini describe pod project-broken-pod      (Events)
+  Normal   Pulling  Pulling image "nginx:this-tag-does-not-exist"
+  Warning  Failed   Failed to pull image "nginx:this-tag-does-not-exist": rpc error: code = NotFound desc = failed to pull and unpack image
+                    "docker.io/library/nginx:this-tag-does-not-exist": failed to resolve reference …: not found
+  Warning  Failed   Error: ErrImagePull
+  Normal   BackOff  Back-off pulling image "nginx:this-tag-does-not-exist"
+  Warning  Failed   Error: ImagePullBackOff
+
+$ docker manifest inspect nginx:this-tag-does-not-exist
+no such manifest: docker.io/library/nginx:this-tag-does-not-exist
+```
+
+**Answers to the course questions:**
+
+1. **What is the Pod status?** `0/1 ImagePullBackOff` (the very first attempts show `ErrImagePull`). The container is `Waiting`; it never started, so there are no logs.
+2. **What is the actual error?** `Failed to pull image "nginx:this-tag-does-not-exist": rpc error: code = NotFound … failed to resolve reference "docker.io/library/nginx:this-tag-does-not-exist": not found`.
+3. **Which command helped find the reason?** `kubectl describe pod project-broken-pod`, specifically its **Events** section (`kubectl events --for pod/project-broken-pod --types=Warning` shows the same lines). `kubectl logs` doesn't help, because no container ever ran.
+4. **What is wrong with the image?** The repository `nginx` exists, but the **tag** `this-tag-does-not-exist` was never published. The registry returns `NotFound`, while `docker manifest inspect nginx:1.27` succeeds.
+5. **How would you fix it?** Use a tag that exists. I changed it to `nginx:1.27` in [`fixed-pod.yaml`](mini-project/fixed-pod.yaml) and recreated the Pod
+   (`kubectl delete pod … && kubectl apply -f fixed-pod.yaml`). A quicker in-place fix is `kubectl set image pod/project-broken-pod app=nginx:1.27`. The image is one of the few Pod fields you can change in place.
+   **Result:** `1/1 Running`, with events `Pulled → Created → Started`.
+
+### Steps 8-9: Service selector challenge
+
+![mini 3](screenshots/mini-3-service-selector.png)
+
+- **Break:** apply [`broken-service.yaml`](mini-project/broken-service.yaml) (`selector: app: wrong-app`). `kubectl get service` still looks perfectly normal (ClusterIP, port 80),
+  but `kubectl get endpoints troubleshooting-service` → **`<none>`**, and `wget http://troubleshooting-service` → `can't connect to remote host (10.101.179.129): Connection refused`.
+- **Root cause:** `kubectl get pods --show-labels` shows the Pods are labelled `app=troubleshooting-app`. `describe service` shows `Selector: app=wrong-app`
+  and an empty `Endpoints:` field, and `kubectl get pods -l app=wrong-app` → `No resources found`. The selector matches no Pod, so the EndpointSlice is empty and kube-proxy
+  has nothing to forward to. With no endpoints, the ClusterIP actively **rejects** connections, which is why the error is "refused" and not a timeout.
+- **Fix:** re-apply the original [`service.yaml`](mini-project/service.yaml). **Verify:** `Endpoints: 10.244.0.74:80,10.244.0.75:80`, and `wget` → `Welcome to nginx!`.
+
+### Step 10: checklist (events + DNS)
+
+`kubectl get events --sort-by=.lastTimestamp` shows the whole broken-Pod story in order (`ErrImagePull` → `ImagePullBackOff` → after the fix: `Scheduled`, `Pulled nginx:1.27`, `Started`).
+`nslookup troubleshooting-service` from the tester Pod resolves `troubleshooting-service.s14-mini.svc.cluster.local → 10.101.179.129` (the ClusterIP).
+The extra `NXDOMAIN` lines are normal: busybox's nslookup tries every search domain from `/etc/resolv.conf` (`s14-mini.svc.cluster.local svc.cluster.local cluster.local`, `ndots:5`), and only the first one exists.
+
+### Troubleshooting table
+
+| Problem | What I saw | Command I used | Root cause | Fix |
+| :--- | :--- | :--- | :--- | :--- |
+| **Broken Pod** | `project-broken-pod 0/1 ImagePullBackOff`, container `Waiting`, no logs | `kubectl get pod`, `kubectl describe pod` (Events), `kubectl events --for pod/… --types=Warning` | the kubelet can't pull the container image, so the container is never created | fix the image in the YAML and recreate the Pod (or `kubectl set image`) → `1/1 Running` |
+| **Service Problem** | `get service` looks fine, but `get endpoints` → `<none>` and `wget` → connection refused | `kubectl get endpoints`, `kubectl describe service`, `kubectl get pods --show-labels`, `get pods -l app=wrong-app` | selector `app=wrong-app` ≠ Pod label `app=troubleshooting-app` → no endpoints | restore `selector: app: troubleshooting-app` → 2 endpoints, `wget` works |
+| **Image Problem** | `Failed to pull image "nginx:this-tag-does-not-exist" … NotFound … not found` | `kubectl describe pod`, `kubectl get pod -o jsonpath='{.spec.containers[0].image}'`, `docker manifest inspect` | the tag `this-tag-does-not-exist` doesn't exist in `docker.io/library/nginx` | use a published tag (`nginx:1.27`) |
+
+### README questions (in my own words)
+
+1. **What does `kubectl get` tell us?** A one-line summary per object: for Pods, that's READY containers, STATUS, RESTARTS, AGE (and IP/node with `-o wide`). It's the quick "what state is everything in" check, and it's filterable by label (`-l`), field and output format.
+2. **`get` vs `describe`?** `get` is a short table (or raw YAML/JSON with `-o`). `describe` is a human-readable deep dive into one object: container state and last state, exit codes, probes, mounts, conditions and, most importantly, the **Events** related to it.
+3. **Why `kubectl logs`?** To read what the application printed to stdout/stderr: crashes, stack traces, "can't connect to DB". `--previous` shows the last crashed instance, and `-f` follows the log live.
+4. **When `kubectl exec`?** When the Pod runs but behaves wrongly and you need to look from inside: curl `localhost`, check env vars, config files, DNS (`/etc/resolv.conf`), or listening ports. (If the image has no shell or tools, use `kubectl debug` with an ephemeral container.)
+5. **`CrashLoopBackOff`?** The container starts and then exits (or is killed by a failing liveness probe) again and again. The kubelet keeps restarting it, waiting longer each time (10s, 20s, 40s … 5 min). Check `logs --previous` and the exit code.
+6. **`ImagePullBackOff`?** The image can't be pulled (wrong name or tag, private registry without `imagePullSecrets`, rate limit, no network). After the first failure (`ErrImagePull`), the kubelet retries with a growing back-off, and that waiting state is `ImagePullBackOff`.
+7. **Why can a Pod remain `Pending`?** The scheduler can't place it: not enough CPU/memory for its requests, a nodeSelector/affinity that matches no node, taints without tolerations, or an unbound PVC. `describe pod` → `FailedScheduling` gives the reason.
+8. **Why can a Service have no endpoints?** Its selector matches no Pods (a label typo, as in step 8), or the matching Pods aren't **Ready** (failing readiness probe), or they're in another namespace (a Service only selects Pods in its own namespace).
+9. **Service selector ↔ Pod labels?** A Service doesn't point to Pods by name. It continuously selects **every Ready Pod whose labels match its selector**, and the EndpointSlice controller keeps that list of IPs up to date. The labels in the Deployment's Pod template must match the Service selector exactly.
+10. **What is Kubernetes DNS?** CoreDNS (the `kube-dns` Service, `10.96.0.10` here) gives every Service a name, `<service>.<namespace>.svc.cluster.local`, that resolves to its ClusterIP. Pods get a `resolv.conf` with search domains, so inside the same namespace the short name `troubleshooting-service` is enough.

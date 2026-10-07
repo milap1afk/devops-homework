@@ -1,0 +1,11 @@
+################ Course hpa/ files: backend + service + HPA ################
+$ kubectl -n s13-hpa apply -f 03-mini-project/course-hpa/backend-deployment.yaml -f 03-mini-project/course-hpa/backend-service.yaml -f 03-mini-project/course-hpa/hpa-backend.yaml
+deployment.apps/yatri-backend created
+service/yatri-backend-service created
+horizontalpodautoscaler.autoscaling/yatri-backend-hpa created
+
+$ kubectl -n s13-hpa rollout status deploy/yatri-backend --timeout=240s
+Waiting for deployment "yatri-backend" rollout to finish: 0 of 2 updated replicas are available...
+Waiting for deployment "yatri-backend" rollout to finish: 1 of 2 updated replicas are available...
+deployment "yatri-backend" successfully rolled out
+

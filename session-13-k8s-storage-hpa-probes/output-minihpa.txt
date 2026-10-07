@@ -1,0 +1,109 @@
+$ kubectl apply -f 03-mini-project/namespace.yaml -f 03-mini-project/pvc.yaml -f 03-mini-project/deployment.yaml -f 03-mini-project/service.yaml -f 03-mini-project/hpa.yaml
+namespace/s13-mini unchanged
+persistentvolumeclaim/web-data unchanged
+deployment.apps/web-app unchanged
+service/web-service unchanged
+horizontalpodautoscaler.autoscaling/web-app-hpa unchanged
+
+################ Task 3: trigger HPA scaling ################
+$ kubectl -n s13-mini get hpa
+NAME          REFERENCE            TARGETS        MINPODS   MAXPODS   REPLICAS   AGE
+web-app-hpa   Deployment/web-app   cpu: 35%/50%   2         5         2          10m
+
+$ kubectl -n s13-mini run load-generator --image=busybox:1.36 --restart=Never -- /bin/sh -c 'while true; do wget -q -O- http://web-service; done'
+pod/load-generator created
+
+# ---- target 50% (hpa.yaml as given) ----
+TIME    TARGETS            MIN MAX REPLICAS | per-Pod CPU (kubectl top)
+t+0s    cpu: 35%/50% 2 5 2   |  36m 35m 
+t+21s   cpu: 24%/50% 2 5 2   |  24m 25m 
+t+41s   cpu: 24%/50% 2 5 2   |  24m 25m 
+t+61s   cpu: 24%/50% 2 5 2   |  24m 25m 
+t+82s   cpu: 34%/50% 2 5 2   |  35m 33m 
+t+102s  cpu: 34%/50% 2 5 2   |  35m 33m 
+t+123s  cpu: 34%/50% 2 5 2   |  35m 33m 
+t+143s  cpu: 31%/50% 2 5 2   |  33m 30m 
+
+$ kubectl -n s13-mini top pods
+NAME                      CPU(cores)   MEMORY(bytes)   
+load-generator            569m         5Mi             
+web-app-d45775485-699hs   33m          4Mi             
+web-app-d45775485-r82jz   30m          4Mi             
+
+# One wget loop gives each nginx Pod ~30m CPU = ~30% of its 100m request: below 50%, so the HPA correctly keeps 2 replicas.
+################ Bonus challenge 1: lower the target to 30% (same load) ################
+$ sed 's/averageUtilization: 50/averageUtilization: 30/' 03-mini-project/hpa.yaml | kubectl apply -f -
+horizontalpodautoscaler.autoscaling/web-app-hpa configured
+
+TIME    TARGETS            MIN MAX REPLICAS | per-Pod CPU (kubectl top)
+t+0s    cpu: 31%/30% 2 5 2   |  33m 30m 
+t+20s   cpu: 31%/30% 2 5 2   |  33m 30m 
+t+41s   cpu: 32%/30% 2 5 2   |  31m 33m 
+t+61s   cpu: 32%/30% 2 5 2   |  31m 33m 
+t+81s   cpu: 32%/30% 2 5 2   |  31m 33m 
+t+102s  cpu: 33%/30% 2 5 2   |  33m 33m 
+t+122s  cpu: 33%/30% 2 5 2   |  33m 33m 
+t+143s  cpu: 33%/30% 2 5 2   |  33m 33m 
+t+163s  cpu: 34%/30% 2 5 2   |  34m 34m 
+
+$ kubectl -n s13-mini get hpa
+NAME          REFERENCE            TARGETS        MINPODS   MAXPODS   REPLICAS   AGE
+web-app-hpa   Deployment/web-app   cpu: 34%/30%   2         5         3          16m
+
+$ kubectl -n s13-mini get pods -o wide
+NAME                      READY   STATUS    RESTARTS   AGE     IP             NODE       NOMINATED NODE   READINESS GATES
+load-generator            1/1     Running   0          5m48s   10.244.0.101   minikube   <none>           <none>
+web-app-d45775485-699hs   1/1     Running   0          12m     10.244.0.99    minikube   <none>           <none>
+web-app-d45775485-r82jz   1/1     Running   0          12m     10.244.0.98    minikube   <none>           <none>
+web-app-d45775485-wr7pw   1/1     Running   0          32s     10.244.0.102   minikube   <none>           <none>
+
+$ kubectl -n s13-mini describe hpa web-app-hpa | sed -n '/^Metrics:/,/^Min replicas/p;/^Events:/,$p'
+Metrics:                                               ( current / target )
+  resource cpu on pods  (as a percentage of request):  34% (34m) / 30%
+Min replicas:                                          2
+Events:
+  Type     Reason                        Age                From                       Message
+  ----     ------                        ----               ----                       -------
+  Warning  FailedComputeMetricsReplicas  14m (x4 over 15m)  horizontal-pod-autoscaler  invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)
+  Warning  FailedComputeMetricsReplicas  13m (x8 over 16m)  horizontal-pod-autoscaler  invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API
+  Warning  FailedGetResourceMetric       13m (x9 over 16m)  horizontal-pod-autoscaler  failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API
+  Warning  FailedGetResourceMetric       11m (x7 over 15m)  horizontal-pod-autoscaler  failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)
+  Normal   SuccessfulRescale             32s                horizontal-pod-autoscaler  New size: 3; reason: cpu resource utilization (percentage of request) above target
+
+################ Stop the load -> scale down (default 300s stabilization window) ################
+$ kubectl -n s13-mini delete pod load-generator --now
+pod "load-generator" deleted from s13-mini namespace
+
+t+0s    cpu: 34%/30% 2 5 3
+t+30s   cpu: 18%/30% 2 5 3
+t+61s   cpu: 18%/30% 2 5 3
+t+91s   cpu: 1%/30% 2 5 3
+t+121s  cpu: 1%/30% 2 5 3
+t+152s  cpu: 1%/30% 2 5 3
+t+182s  cpu: 1%/30% 2 5 3
+t+213s  cpu: 1%/30% 2 5 3
+t+243s  cpu: 1%/30% 2 5 3
+t+273s  cpu: 1%/30% 2 5 3
+t+304s  cpu: 1%/30% 2 5 3
+t+334s  cpu: 1%/30% 2 5 2
+
+$ kubectl -n s13-mini get hpa
+NAME          REFERENCE            TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+web-app-hpa   Deployment/web-app   cpu: 1%/30%   2         5         2          22m
+
+$ kubectl -n s13-mini describe hpa web-app-hpa | sed -n '/^Events:/,$p'
+Events:
+  Type     Reason                        Age                From                       Message
+  ----     ------                        ----               ----                       -------
+  Warning  FailedComputeMetricsReplicas  20m (x4 over 21m)  horizontal-pod-autoscaler  invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)
+  Warning  FailedComputeMetricsReplicas  18m (x8 over 22m)  horizontal-pod-autoscaler  invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API
+  Warning  FailedGetResourceMetric       18m (x9 over 22m)  horizontal-pod-autoscaler  failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API
+  Warning  FailedGetResourceMetric       17m (x7 over 21m)  horizontal-pod-autoscaler  failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)
+  Normal   SuccessfulRescale             6m8s               horizontal-pod-autoscaler  New size: 3; reason: cpu resource utilization (percentage of request) above target
+  Normal   SuccessfulRescale             21s                horizontal-pod-autoscaler  New size: 2; reason: All metrics below target
+
+$ kubectl -n s13-mini get pods
+NAME                      READY   STATUS    RESTARTS   AGE
+web-app-d45775485-699hs   1/1     Running   0          17m
+web-app-d45775485-r82jz   1/1     Running   0          17m
+

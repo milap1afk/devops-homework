@@ -234,7 +234,8 @@ s09() {
 smini() {
   MP=mini-project; NS=s14-mini; N="kubectl -n $NS"
   kubectl delete ns $NS --ignore-not-found --wait --timeout=180s >/dev/null 2>&1; kubectl create ns $NS >/dev/null
-  probe() { $N run probe-$RANDOM --image=busybox:1.36 --restart=Never --rm -i --quiet -- sh -c "$1" 2>&1; }
+  $N run tester --image=busybox:1.36 --restart=Never --command -- sleep 3600 >/dev/null; $N wait --for=condition=Ready pod/tester --timeout=180s >/dev/null
+  probe() { $N exec tester -- sh -c "$1" 2>&1; }   # a busybox "client" Pod in the same namespace
   say "================ 1. DEPLOY ================"
   run "$N apply -f $MP/deployment.yaml -f $MP/service.yaml"
   run "$N rollout status deploy/troubleshooting-app --timeout=180s"
