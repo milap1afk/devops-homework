@@ -9,3 +9,86 @@ Waiting for deployment "yatri-backend" rollout to finish: 0 of 2 updated replica
 Waiting for deployment "yatri-backend" rollout to finish: 1 of 2 updated replicas are available...
 deployment "yatri-backend" successfully rolled out
 
+$ kubectl -n s13-hpa get deploy,svc,hpa
+NAME                            READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/yatri-backend   2/2     2            2           2m46s
+
+NAME                            TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
+service/yatri-backend-service   ClusterIP   10.96.12.236   <none>        80/TCP    2m47s
+
+NAME                                                    REFERENCE                  TARGETS        MINPODS   MAXPODS   REPLICAS   AGE
+horizontalpodautoscaler.autoscaling/yatri-backend-hpa   Deployment/yatri-backend   cpu: 10%/50%   2         10        2          2m47s
+
+################ Run the course's load_generator.sh (unchanged) for ~3 minutes ################
+# it calls 'kubectl port-forward svc/yatri-backend-service' without -n, so it runs with a private kubeconfig copy
+# whose current namespace is s13-hpa (the shared context is not touched)
+# Port 5000 on this Mac is already taken by macOS AirPlay Receiver (ControlCenter), so the script's default
+# target http://localhost:5000/healthz would hit AirPlay, not Kubernetes:
+$ lsof -nP -iTCP:5000 -sTCP:LISTEN | head -3
+COMMAND   PID         USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+ControlCe 699 milapkothari   10u  IPv4 0x7d350c0a2e527191      0t0  TCP *:5000 (LISTEN)
+ControlCe 699 milapkothari   11u  IPv6 0x498cf7899d9eeb79      0t0  TCP *:5000 (LISTEN)
+
+$ curl -s -o /dev/null -w "HTTP %{http_code}  server: %header{server}\n" http://localhost:5000/healthz
+HTTP 403  server: AirTunes/870.14.1
+
+# -> forward 15000 instead and pass the URL as the script's 1st argument (its curl pre-check then succeeds
+#    and it skips its own port-forward)
+$ curl -s http://localhost:15000/healthz
+ok from yatri-backend-5d4cb859c4-vw4th
+
+$ cat load_generator.sh output
+==================================================
+      KUBERNETES HPA TRAFFIC LOAD GENERATOR       
+==================================================
+Pounding target endpoint: http://localhost:15000/healthz
+Simulating traffic spike. Press Ctrl+C to stop.
+
+Traffic load active! In another terminal, run: kubectl get hpa -w
+
+TIME    TARGETS  MIN MAX REPLICAS   | per-Pod CPU (kubectl top)
+t+3s    cpu: 10%/50% 2 10 2   |  5m 5m 
+t+27s   cpu: 10%/50% 2 10 2   |  5m 5m 
+t+47s   cpu: 21%/50% 2 10 2   |  15m 6m 
+t+68s   cpu: 12%/50% 2 10 2   |  15m 6m 
+t+89s   cpu: 12%/50% 2 10 2   |  15m 6m 
+t+110s  cpu: 16%/50% 2 10 2   |  2m 8m 
+t+130s  cpu: 16%/50% 2 10 2   |  2m 8m 
+t+161s  cpu: 10%/50% 2 10 2   |  0m 7m 
+error: stream error when reading response body, may be caused by closed connection. Please retry. Original error: stream error: stream ID 1; INTERNAL_ERROR; received from peer
+t+197s     |  0m 7m 
+Unable to connect to the server: net/http: TLS handshake timeout
+t+315s     |  
+
+./demo.sh: line 216: 70172 Terminated: 15          KUBECONFIG=$KC perl -e 'setpgrp(0,0); exec @ARGV' bash $H/load_generator.sh http://localhost:15000/healthz > $H/../.lg.log 2>&1
+# load generator stopped
+$ kubectl -n s13-hpa get hpa
+Unable to connect to the server: EOF
+
+$ kubectl -n s13-hpa top pods
+error: Get "https://127.0.0.1:32771/api": net/http: TLS handshake timeout - error from a previous attempt: EOF
+
+$ kubectl -n s13-hpa describe hpa yatri-backend-hpa | sed -n '/^Metrics:/,/^Conditions:/p;/^Events:/,$p'
+Unable to connect to the server: net/http: TLS handshake timeout
+
+Unable to connect to the server: net/http: TLS handshake timeout
+# ---- the API server became unreachable during the run (errors above). Re-checked at 16:32:40 after it recovered: ----
+$ kubectl -n s13-hpa get hpa
+NAME                REFERENCE                  TARGETS        MINPODS   MAXPODS   REPLICAS   AGE
+yatri-backend-hpa   Deployment/yatri-backend   cpu: 18%/50%   2         10        2          11m
+
+$ kubectl -n s13-hpa get pods
+NAME                             READY   STATUS    RESTARTS   AGE
+yatri-backend-5d4cb859c4-vw4th   1/1     Running   0          11m
+yatri-backend-5d4cb859c4-wftjx   1/1     Running   0          11m
+
+$ kubectl -n kube-system get pods -l k8s-app=metrics-server
+NAME                              READY   STATUS    RESTARTS        AGE
+metrics-server-768f9f6999-f8bd5   1/1     Running   24 (112s ago)   5h5m
+
+$ kubectl -n s13-hpa describe hpa yatri-backend-hpa | sed -n '/^Metrics:/,/^Max replicas/p'
+Metrics:                                               ( current / target )
+  resource cpu on pods  (as a percentage of request):  18% (9m) / 50%
+Min replicas:                                          2
+Max replicas:                                          10
+
