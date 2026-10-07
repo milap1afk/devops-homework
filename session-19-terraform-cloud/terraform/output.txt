@@ -1,0 +1,100 @@
+$ terraform init
+Initializing the backend...
+
+Initializing provider plugins...
+- Reusing previous version of hashicorp/aws from the dependency lock file
+- Reusing previous version of hashicorp/random from the dependency lock file
+- Using previously-installed hashicorp/aws v6.67.0
+- Using previously-installed hashicorp/random v3.9.1
+
+Terraform has been successfully initialized!
+
+$ terraform fmt -check -recursive && echo "fmt: OK"
+fmt: OK
+
+$ terraform validate
+Success! The configuration is valid.
+
+
+$ terraform plan -input=false -out=infra.tfplan | grep -E "^  # |^Plan:|will be (created|read)"
+  # aws_iam_instance_profile.web will be created
+  # aws_iam_role.web will be created
+  # aws_iam_role_policy.web_s3_read will be created
+  # aws_instance.web will be created
+  # aws_internet_gateway.main will be created
+  # aws_route_table.public will be created
+  # aws_route_table_association.public will be created
+  # aws_s3_bucket.assets will be created
+  # aws_s3_bucket_public_access_block.assets will be created
+  # aws_s3_bucket_versioning.assets will be created
+  # aws_s3_object.index will be created
+  # aws_security_group.web will be created
+  # aws_subnet.public will be created
+  # aws_vpc.main will be created
+  # aws_vpc_security_group_egress_rule.all will be created
+  # aws_vpc_security_group_ingress_rule.http will be created
+  # aws_vpc_security_group_ingress_rule.ssh will be created
+  # random_id.bucket will be created
+Plan: 18 to add, 0 to change, 0 to destroy.
+
+$ terraform show -json infra.tfplan | python3 -c "import json,sys; p=json.load(sys.stdin); [print(r[\"change\"][\"actions\"][0].ljust(7), r[\"address\"]) for r in p[\"resource_changes\"]]"
+create  aws_iam_instance_profile.web
+create  aws_iam_role.web
+create  aws_iam_role_policy.web_s3_read
+create  aws_instance.web
+create  aws_internet_gateway.main
+create  aws_route_table.public
+create  aws_route_table_association.public
+create  aws_s3_bucket.assets
+create  aws_s3_bucket_public_access_block.assets
+create  aws_s3_bucket_versioning.assets
+create  aws_s3_object.index
+create  aws_security_group.web
+create  aws_subnet.public
+create  aws_vpc.main
+create  aws_vpc_security_group_egress_rule.all
+create  aws_vpc_security_group_ingress_rule.http
+create  aws_vpc_security_group_ingress_rule.ssh
+create  random_id.bucket
+
+# Selected values from the plan:
+$ terraform show -json infra.tfplan | python3 -c "import json,sys; p=json.load(sys.stdin); v={r['address']:r['change']['after'] for r in p['resource_changes']}; print('vpc cidr      :', v['aws_vpc.main']['cidr_block']); print('subnet        :', v['aws_subnet.public']['cidr_block'], v['aws_subnet.public']['availability_zone'], 'public_ip_on_launch=', v['aws_subnet.public']['map_public_ip_on_launch']); print('route         :', [r['cidr_block'] + ' -> internet gateway (id known after apply)' for r in v['aws_route_table.public']['route']]); print('instance      :', v['aws_instance.web']['instance_type'], 'IMDSv2=', v['aws_instance.web']['metadata_options'][0]['http_tokens'], 'root gp3', v['aws_instance.web']['root_block_device'][0]['volume_size'], 'GB encrypted=', v['aws_instance.web']['root_block_device'][0]['encrypted']); print('ssh rule      :', v['aws_vpc_security_group_ingress_rule.ssh']['cidr_ipv4'], 'port', v['aws_vpc_security_group_ingress_rule.ssh']['from_port'])"
+vpc cidr      : 10.20.0.0/16
+subnet        : 10.20.1.0/24 ap-south-1a public_ip_on_launch= True
+route         : ['0.0.0.0/0 -> internet gateway (id known after apply)']
+instance      : t3.micro IMDSv2= required root gp3 10 GB encrypted= True
+ssh rule      : 203.0.113.10/32 port 22
+
+# Dependency graph (who waits for whom):
+$ terraform graph | grep -- "->" | grep -v -E "provider|\[root\]" | sed -E "s/\[label.*//; s/^[[:space:]]+//" | sort
+"aws_iam_instance_profile.web" -> "aws_iam_role.web";
+"aws_iam_role_policy.web_s3_read" -> "aws_iam_role.web";
+"aws_iam_role_policy.web_s3_read" -> "aws_s3_bucket.assets";
+"aws_instance.web" -> "aws_iam_instance_profile.web";
+"aws_instance.web" -> "aws_s3_bucket.assets";
+"aws_instance.web" -> "aws_security_group.web";
+"aws_instance.web" -> "aws_subnet.public";
+"aws_instance.web" -> "data.aws_ami.ubuntu";
+"aws_internet_gateway.main" -> "aws_vpc.main";
+"aws_route_table.public" -> "aws_internet_gateway.main";
+"aws_route_table_association.public" -> "aws_route_table.public";
+"aws_route_table_association.public" -> "aws_subnet.public";
+"aws_s3_bucket.assets" -> "random_id.bucket";
+"aws_s3_bucket_public_access_block.assets" -> "aws_s3_bucket.assets";
+"aws_s3_bucket_versioning.assets" -> "aws_s3_bucket.assets";
+"aws_s3_object.index" -> "aws_s3_bucket.assets";
+"aws_security_group.web" -> "aws_vpc.main";
+"aws_subnet.public" -> "aws_vpc.main";
+"aws_subnet.public" -> "data.aws_availability_zones.available";
+"aws_vpc_security_group_egress_rule.all" -> "aws_security_group.web";
+"aws_vpc_security_group_ingress_rule.http" -> "aws_security_group.web";
+"aws_vpc_security_group_ingress_rule.ssh" -> "aws_security_group.web";
+
+# State: nothing has been applied, so the state is empty
+$ terraform state list || true
+No state file was found!
+
+State management commands require a state file. Run this command
+in a directory where Terraform has been run or use the -state flag
+to point the command to a specific state location.
+

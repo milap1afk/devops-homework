@@ -1,0 +1,7 @@
+#!/bin/bash
+# Runs once on first boot: install nginx, copy the page from S3 (using the instance role), serve it.
+set -euxo pipefail
+apt-get update -y
+apt-get install -y nginx awscli
+aws s3 cp "s3://${bucket}/index.html" /var/www/html/index.html --region "${region}"
+systemctl enable --now nginx
