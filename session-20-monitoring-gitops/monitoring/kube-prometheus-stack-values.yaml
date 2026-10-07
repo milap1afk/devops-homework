@@ -1,0 +1,41 @@
+# kube-prometheus-stack trimmed for an 8 GB laptop running minikube
+prometheus:
+  prometheusSpec:
+    retention: 6h
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    resources:
+      requests: { cpu: 100m, memory: 300Mi }
+      limits:   { memory: 700Mi }
+    # pick up ServiceMonitors / PrometheusRules from every namespace, not only this release's
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+
+grafana:
+  adminPassword: "local-demo-only"     # throwaway minikube lab; never reuse
+  grafana.ini:
+    auth.anonymous:
+      enabled: true                    # read-only viewer access for screenshots
+      org_role: Viewer
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+
+kube-state-metrics:
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+
+prometheus-node-exporter:
+  resources:
+    requests: { cpu: 10m, memory: 16Mi }
+
+# minikube runs these control-plane parts in ways the default scrape config can't reach
+kubeEtcd: { enabled: false }
+kubeControllerManager: { enabled: false }
+kubeScheduler: { enabled: false }
+kubeProxy: { enabled: false }

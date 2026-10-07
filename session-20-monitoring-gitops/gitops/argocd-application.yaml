@@ -1,0 +1,21 @@
+# Argo CD Application: Git (this repo) is the source of truth for namespace "podinfo"
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: podinfo
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/milap1afk/devops-homework.git
+    targetRevision: main
+    path: session-20-monitoring-gitops/gitops/podinfo
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: podinfo
+  syncPolicy:
+    automated:
+      prune: true      # delete resources that were removed from Git
+      selfHeal: true   # undo manual changes made directly in the cluster (drift)
+    syncOptions:
+      - CreateNamespace=true

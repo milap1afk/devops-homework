@@ -1,0 +1,29 @@
+# Custom alerts for podinfo (evaluated by Prometheus, routed by Alertmanager)
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: podinfo-alerts
+  labels: { app: podinfo }
+spec:
+  groups:
+    - name: podinfo.rules
+      rules:
+        - alert: PodinfoDown
+          expr: sum(up{job="podinfo"}) == 0 or absent(up{job="podinfo"})
+          for: 30s
+          labels: { severity: critical }
+          annotations:
+            summary: "podinfo has no healthy replicas"
+            description: "No podinfo target has been scraped successfully for 30s."
+        - alert: PodinfoHighCPU
+          expr: sum(rate(container_cpu_usage_seconds_total{namespace="podinfo", container="podinfo"}[2m])) by (pod) > 0.15
+          for: 1m
+          labels: { severity: warning }
+          annotations:
+            summary: "podinfo pod {{ $labels.pod }} is using more than 150m CPU"
+        - alert: PodinfoHighMemory
+          expr: max(container_memory_working_set_bytes{namespace="podinfo", container="podinfo"}) by (pod) > 100 * 1024 * 1024
+          for: 1m
+          labels: { severity: warning }
+          annotations:
+            summary: "podinfo pod {{ $labels.pod }} is using more than 100Mi memory"

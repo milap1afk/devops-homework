@@ -1,0 +1,13 @@
+# Tells the Prometheus Operator to scrape podinfo's /metrics every 15s
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: podinfo
+  labels: { app: podinfo }
+spec:
+  selector:
+    matchLabels: { app: podinfo }
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
