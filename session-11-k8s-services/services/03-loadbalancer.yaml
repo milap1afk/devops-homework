@@ -1,0 +1,13 @@
+# LoadBalancer: NodePort + an external IP from the cloud's load balancer.
+# On minikube, `minikube tunnel` plays the cloud LB and assigns the EXTERNAL-IP.
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-loadbalancer
+  namespace: s11
+spec:
+  type: LoadBalancer
+  selector: { app: web }
+  ports:
+    - port: 8088
+      targetPort: http

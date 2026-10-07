@@ -1,0 +1,17 @@
+$ kubectl get pod lifecycle-crashloop -o jsonpath='{.status.containerStatuses[0].state}'   # polled until the kubelet reports the back-off
+{
+    "waiting": {
+        "message": "back-off 2m40s restarting failed container=app pod=lifecycle-crashloop_default(a3df6a02-5f4c-4053-b87e-f8bae78f9ce0)",
+        "reason": "CrashLoopBackOff"
+    }
+}
+
+$ kubectl get pod lifecycle-crashloop
+NAME                  READY   STATUS             RESTARTS      AGE
+lifecycle-crashloop   0/1     CrashLoopBackOff   5 (88s ago)   4m29s
+
+$ kubectl get events --field-selector involvedObject.name=lifecycle-crashloop,reason=BackOff
+LAST SEEN   TYPE      REASON    OBJECT                    MESSAGE
+9m33s       Warning   BackOff   pod/lifecycle-crashloop   Back-off restarting failed container app in pod lifecycle-crashloop_default(dc9073bb-d557-47e3-8477-930ef0d8b6d0)
+5m49s       Warning   BackOff   pod/lifecycle-crashloop   Back-off restarting failed container app in pod lifecycle-crashloop_default(59a826bc-2f41-4e55-8d82-59e2e1ca29ea)
+8s          Warning   BackOff   pod/lifecycle-crashloop   Back-off restarting failed container app in pod lifecycle-crashloop_default(a3df6a02-5f4c-4053-b87e-f8bae78f9ce0)

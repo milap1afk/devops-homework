@@ -1,0 +1,37 @@
+# Headless: clusterIP: None -> no virtual IP, no load balancing.
+# DNS returns the IPs of ALL Pods, and with a StatefulSet every Pod gets its own stable DNS name:
+#   db-0.db-headless.s11.svc.cluster.local
+apiVersion: v1
+kind: Service
+metadata:
+  name: db-headless
+  namespace: s11
+spec:
+  clusterIP: None
+  selector: { app: db }
+  ports:
+    - port: 5678
+      name: http
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+  namespace: s11
+spec:
+  serviceName: db-headless     # links Pod DNS names to the headless Service
+  replicas: 3
+  selector:
+    matchLabels: { app: db }
+  template:
+    metadata:
+      labels: { app: db }
+    spec:
+      containers:
+        - name: echo
+          image: hashicorp/http-echo:1.0
+          args: ["-listen=:5678", "-text=hello from $(POD_NAME)"]
+          env:
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+          ports: [{ containerPort: 5678, name: http }]

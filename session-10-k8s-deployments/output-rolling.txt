@@ -1,0 +1,155 @@
+$ kubectl apply -f 01-rolling-update/deployment.yaml
+deployment.apps/web-rolling created
+
+$ kubectl rollout status deployment/web-rolling --timeout=180s
+Waiting for deployment "web-rolling" rollout to finish: 0 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 0 of 4 updated replicas are available...
+Waiting for deployment "web-rolling" rollout to finish: 0 of 4 updated replicas are available...
+Waiting for deployment "web-rolling" rollout to finish: 0 of 4 updated replicas are available...
+Waiting for deployment "web-rolling" rollout to finish: 0 of 4 updated replicas are available...
+Waiting for deployment "web-rolling" rollout to finish: 1 of 4 updated replicas are available...
+Waiting for deployment "web-rolling" rollout to finish: 1 of 4 updated replicas are available...
+Waiting for deployment "web-rolling" rollout to finish: 2 of 4 updated replicas are available...
+Waiting for deployment "web-rolling" rollout to finish: 3 of 4 updated replicas are available...
+deployment "web-rolling" successfully rolled out
+
+$ kubectl get deploy web-rolling -o wide
+NAME          READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES       SELECTOR
+web-rolling   4/4     4            4           37s   nginx        nginx:1.26   app=web-rolling
+
+$ kubectl describe deploy web-rolling | grep -E 'StrategyType|RollingUpdateStrategy|MinReadySeconds'
+StrategyType:           RollingUpdate
+MinReadySeconds:        5
+RollingUpdateStrategy:  1 max unavailable, 1 max surge
+
+$ kubectl get pods -l app=web-rolling -o custom-columns=POD:.metadata.name,IMAGE:.spec.containers[0].image,STATUS:.status.phase
+POD                            IMAGE        STATUS
+web-rolling-57df964cdb-cbnnn   nginx:1.26   Running
+web-rolling-57df964cdb-cx949   nginx:1.26   Running
+web-rolling-57df964cdb-kpnbp   nginx:1.26   Running
+web-rolling-57df964cdb-vt9lv   nginx:1.26   Running
+
+# ---- Perform the update: nginx:1.26 -> nginx:1.27 ----
+$ kubectl set image deployment/web-rolling nginx=nginx:1.27
+deployment.apps/web-rolling image updated
+
+$ kubectl annotate deployment/web-rolling kubernetes.io/change-cause="update to nginx:1.27" --overwrite
+deployment.apps/web-rolling annotated
+
+# Watching mid-rollout (old and new Pods side by side, max 5 = replicas 4 + maxSurge 1):
+--- t+4s
+web-rolling-57df964cdb-cbnnn   nginx:1.26   true    Running
+web-rolling-57df964cdb-cx949   nginx:1.26   true    Running
+web-rolling-57df964cdb-kpnbp   nginx:1.26   true    Running
+web-rolling-57df964cdb-vt9lv   nginx:1.26   true    Running
+web-rolling-9b7f7fc99-k8lzh    nginx:1.27   false   Pending
+web-rolling-9b7f7fc99-sjngx    nginx:1.27   false   Pending
+--- t+8s
+web-rolling-57df964cdb-cbnnn   nginx:1.26   true    Running
+web-rolling-57df964cdb-cx949   nginx:1.26   true    Running
+web-rolling-57df964cdb-kpnbp   nginx:1.26   true    Running
+web-rolling-9b7f7fc99-k8lzh    nginx:1.27   false   Pending
+web-rolling-9b7f7fc99-sjngx    nginx:1.27   false   Pending
+--- t+12s
+web-rolling-57df964cdb-cbnnn   nginx:1.26   true    Running
+web-rolling-57df964cdb-cx949   nginx:1.26   true    Running
+web-rolling-57df964cdb-kpnbp   nginx:1.26   true    Running
+web-rolling-9b7f7fc99-k8lzh    nginx:1.27   false   Pending
+web-rolling-9b7f7fc99-sjngx    nginx:1.27   false   Pending
+--- t+16s
+web-rolling-57df964cdb-cbnnn   nginx:1.26   true    Running
+web-rolling-57df964cdb-cx949   nginx:1.26   true    Running
+web-rolling-57df964cdb-kpnbp   nginx:1.26   true    Running
+web-rolling-9b7f7fc99-k8lzh    nginx:1.27   false   Pending
+web-rolling-9b7f7fc99-sjngx    nginx:1.27   false   Pending
+--- t+20s
+web-rolling-57df964cdb-cbnnn   nginx:1.26   true    Running
+web-rolling-57df964cdb-cx949   nginx:1.26   true    Running
+web-rolling-57df964cdb-kpnbp   nginx:1.26   true    Running
+web-rolling-9b7f7fc99-k8lzh    nginx:1.27   false   Pending
+web-rolling-9b7f7fc99-sjngx    nginx:1.27   false   Pending
+--- t+24s
+web-rolling-57df964cdb-cbnnn   nginx:1.26   true    Running
+web-rolling-57df964cdb-cx949   nginx:1.26   true    Running
+web-rolling-57df964cdb-kpnbp   nginx:1.26   true    Running
+web-rolling-9b7f7fc99-k8lzh    nginx:1.27   false   Pending
+web-rolling-9b7f7fc99-sjngx    nginx:1.27   false   Pending
+
+$ kubectl rollout status deployment/web-rolling --timeout=180s
+Waiting for deployment "web-rolling" rollout to finish: 2 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 2 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 2 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 2 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 2 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 3 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 3 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 3 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 3 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 3 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 3 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 3 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "web-rolling" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "web-rolling" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "web-rolling" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "web-rolling" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "web-rolling" rollout to finish: 3 of 4 updated replicas are available...
+Waiting for deployment "web-rolling" rollout to finish: 3 of 4 updated replicas are available...
+deployment "web-rolling" successfully rolled out
+
+$ kubectl get rs -l app=web-rolling
+NAME                     DESIRED   CURRENT   READY   AGE
+web-rolling-57df964cdb   0         0         0       86s
+web-rolling-9b7f7fc99    4         4         4       49s
+
+$ kubectl get pods -l app=web-rolling -o custom-columns=POD:.metadata.name,IMAGE:.spec.containers[0].image,STATUS:.status.phase
+POD                           IMAGE        STATUS
+web-rolling-9b7f7fc99-977cw   nginx:1.27   Running
+web-rolling-9b7f7fc99-k8lzh   nginx:1.27   Running
+web-rolling-9b7f7fc99-lsb94   nginx:1.27   Running
+web-rolling-9b7f7fc99-sjngx   nginx:1.27   Running
+
+$ kubectl rollout history deployment/web-rolling
+deployment.apps/web-rolling 
+REVISION  CHANGE-CAUSE
+1         initial release nginx:1.26
+2         update to nginx:1.27
+
+
+$ kubectl describe deploy web-rolling | sed -n '/Events:/,$p'
+Events:
+  Type    Reason             Age   From                   Message
+  ----    ------             ----  ----                   -------
+  Normal  ScalingReplicaSet  86s   deployment-controller  Scaled up replica set web-rolling-57df964cdb from 0 to 4
+  Normal  ScalingReplicaSet  49s   deployment-controller  Scaled up replica set web-rolling-9b7f7fc99 from 0 to 1
+  Normal  ScalingReplicaSet  49s   deployment-controller  Scaled down replica set web-rolling-57df964cdb from 4 to 3
+  Normal  ScalingReplicaSet  49s   deployment-controller  Scaled up replica set web-rolling-9b7f7fc99 from 1 to 2
+  Normal  ScalingReplicaSet  8s    deployment-controller  Scaled down replica set web-rolling-57df964cdb from 3 to 2
+  Normal  ScalingReplicaSet  8s    deployment-controller  Scaled up replica set web-rolling-9b7f7fc99 from 2 to 3
+  Normal  ScalingReplicaSet  6s    deployment-controller  Scaled down replica set web-rolling-57df964cdb from 2 to 1
+  Normal  ScalingReplicaSet  6s    deployment-controller  Scaled up replica set web-rolling-9b7f7fc99 from 3 to 4
+  Normal  ScalingReplicaSet  2s    deployment-controller  Scaled down replica set web-rolling-57df964cdb from 1 to 0
+
+# Bonus: roll back to the previous revision
+$ kubectl rollout undo deployment/web-rolling && kubectl rollout status deployment/web-rolling --timeout=180s
+Warning: resource deployments/web-rolling was previously managed with 'kubectl apply'. Rolling back will not update the kubectl.kubernetes.io/last-applied-configuration annotation, which may cause unexpected behavior on future 'kubectl apply' operations. Consider using 'kubectl apply' with your previous configuration file instead.
+deployment.apps/web-rolling rolled back
+Waiting for deployment "web-rolling" rollout to finish: 1 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 1 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 2 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 2 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 2 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 2 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 2 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 2 out of 4 new replicas have been updated...
+Waiting for deployment "web-rolling" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "web-rolling" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "web-rolling" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "web-rolling" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "web-rolling" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "web-rolling" rollout to finish: 1 old replicas are pending termination...
+deployment "web-rolling" successfully rolled out
+
+$ kubectl get deploy web-rolling -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+nginx:1.26
+

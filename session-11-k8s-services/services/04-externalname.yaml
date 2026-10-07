@@ -1,0 +1,10 @@
+# ExternalName: no selector, no Pods, no proxy. Cluster DNS returns a CNAME to an outside host.
+# Apps call "external-api" and DNS sends them to httpbin.org; change it later without touching app code.
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-api
+  namespace: s11
+spec:
+  type: ExternalName
+  externalName: httpbin.org

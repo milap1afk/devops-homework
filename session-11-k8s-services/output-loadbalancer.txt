@@ -1,0 +1,24 @@
+$ kubectl apply -f services/03-loadbalancer.yaml
+service/web-loadbalancer created
+
+$ kubectl -n s11 get svc web-loadbalancer
+NAME               TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)          AGE
+web-loadbalancer   LoadBalancer   10.106.32.83   <pending>     8088:32673/TCP   2s
+
+# EXTERNAL-IP is <pending>: there is no cloud load balancer. Start minikube tunnel (acts as the cloud LB):
+$ kubectl -n s11 get svc web-loadbalancer
+NAME               TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)          AGE
+web-loadbalancer   LoadBalancer   10.106.32.83   127.0.0.1     8088:32673/TCP   3s
+
+$ for i in 1 2 3 4 5 6; do curl -s -m 3 http://127.0.0.1:8088; done | sort | uniq -c
+   2 hello from web-78cc98ffd7-427kb
+   2 hello from web-78cc98ffd7-t5gg5
+   2 hello from web-78cc98ffd7-wwdpk
+
+$ kubectl -n s11 describe svc web-loadbalancer | grep -E '^(Type|LoadBalancer Ingress|Port|NodePort|Endpoints)'
+Type:                     LoadBalancer
+LoadBalancer Ingress:     127.0.0.1 (VIP)
+Port:                     <unset>  8088/TCP
+NodePort:                 <unset>  32673/TCP
+Endpoints:                10.244.0.100:5678,10.244.0.101:5678,10.244.0.102:5678
+

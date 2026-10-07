@@ -1,0 +1,322 @@
+################ 05-pod-lifecycle/01-pending.yaml ################
+$ kubectl apply -f 05-pod-lifecycle/01-pending.yaml
+pod/lifecycle-pending created
+
+$ kubectl get pod lifecycle-pending -o wide
+NAME                READY   STATUS    RESTARTS   AGE   IP       NODE     NOMINATED NODE   READINESS GATES
+lifecycle-pending   0/1     Pending   0          5s    <none>   <none>   <none>           <none>
+
+$ kubectl get pod lifecycle-pending -o jsonpath='phase={.status.phase}  reason={.status.containerStatuses[0].state.*.reason}  restarts={.status.containerStatuses[0].restartCount}{"\n"}'
+phase=Pending  reason=  restarts=
+
+$ kubectl describe pod lifecycle-pending | sed -n '/^Conditions:/,/^Volumes:/p' | grep -v '^Volumes:'
+Conditions:
+  Type           Status
+  PodScheduled   False 
+
+$ kubectl describe pod lifecycle-pending | sed -n '/^Events:/,$p'
+Events:
+  Type     Reason            Age   From               Message
+  ----     ------            ----  ----               -------
+  Warning  FailedScheduling  5s    default-scheduler  0/1 nodes are available: 1 Insufficient cpu. preemption: 0/1 nodes are available: 1 Preemption is not helpful for scheduling.
+
+################ 05-pod-lifecycle/02-running.yaml ################
+$ kubectl apply -f 05-pod-lifecycle/02-running.yaml
+pod/lifecycle-running created
+
+$ kubectl get pod lifecycle-running -o wide
+NAME                READY   STATUS    RESTARTS   AGE   IP            NODE       NOMINATED NODE   READINESS GATES
+lifecycle-running   1/1     Running   0          15s   10.244.0.95   minikube   <none>           <none>
+
+$ kubectl get pod lifecycle-running -o jsonpath='phase={.status.phase}  reason={.status.containerStatuses[0].state.*.reason}  restarts={.status.containerStatuses[0].restartCount}{"\n"}'
+phase=Running  reason=  restarts=0
+
+$ kubectl describe pod lifecycle-running | sed -n '/^Conditions:/,/^Volumes:/p' | grep -v '^Volumes:'
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       True 
+  ContainersReady             True 
+  PodScheduled                True 
+
+$ kubectl describe pod lifecycle-running | sed -n '/^Events:/,$p'
+Events:
+  Type    Reason     Age   From               Message
+  ----    ------     ----  ----               -------
+  Normal  Scheduled  15s   default-scheduler  Successfully assigned default/lifecycle-running to minikube
+  Normal  Pulled     15s   kubelet            spec.containers{app}: Container image "nginx:1.26" already present on machine and can be accessed by the pod
+  Normal  Created    15s   kubelet            spec.containers{app}: Container created
+  Normal  Started    15s   kubelet            spec.containers{app}: Container started
+
+################ 05-pod-lifecycle/03-succeeded.yaml ################
+$ kubectl apply -f 05-pod-lifecycle/03-succeeded.yaml
+pod/lifecycle-succeeded created
+
+$ kubectl get pod lifecycle-succeeded -o wide
+NAME                  READY   STATUS      RESTARTS   AGE   IP            NODE       NOMINATED NODE   READINESS GATES
+lifecycle-succeeded   0/1     Completed   0          15s   10.244.0.96   minikube   <none>           <none>
+
+$ kubectl get pod lifecycle-succeeded -o jsonpath='phase={.status.phase}  reason={.status.containerStatuses[0].state.*.reason}  restarts={.status.containerStatuses[0].restartCount}{"\n"}'
+phase=Succeeded  reason=Completed  restarts=0
+
+$ kubectl describe pod lifecycle-succeeded | sed -n '/^Conditions:/,/^Volumes:/p' | grep -v '^Volumes:'
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   False 
+  Initialized                 True 
+  Ready                       False 
+  ContainersReady             False 
+  PodScheduled                True 
+
+$ kubectl describe pod lifecycle-succeeded | sed -n '/^Events:/,$p'
+Events:
+  Type    Reason     Age   From               Message
+  ----    ------     ----  ----               -------
+  Normal  Scheduled  15s   default-scheduler  Successfully assigned default/lifecycle-succeeded to minikube
+  Normal  Pulled     15s   kubelet            spec.containers{job}: Container image "busybox:1.36" already present on machine and can be accessed by the pod
+  Normal  Created    15s   kubelet            spec.containers{job}: Container created
+  Normal  Started    15s   kubelet            spec.containers{job}: Container started
+
+$ kubectl logs lifecycle-succeeded
+doing work
+done
+
+################ 05-pod-lifecycle/04-failed.yaml ################
+$ kubectl apply -f 05-pod-lifecycle/04-failed.yaml
+pod/lifecycle-failed created
+
+$ kubectl get pod lifecycle-failed -o wide
+NAME               READY   STATUS   RESTARTS   AGE   IP            NODE       NOMINATED NODE   READINESS GATES
+lifecycle-failed   0/1     Error    0          15s   10.244.0.97   minikube   <none>           <none>
+
+$ kubectl get pod lifecycle-failed -o jsonpath='phase={.status.phase}  reason={.status.containerStatuses[0].state.*.reason}  restarts={.status.containerStatuses[0].restartCount}{"\n"}'
+phase=Failed  reason=Error  restarts=0
+
+$ kubectl describe pod lifecycle-failed | sed -n '/^Conditions:/,/^Volumes:/p' | grep -v '^Volumes:'
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   False 
+  Initialized                 True 
+  Ready                       False 
+  ContainersReady             False 
+  PodScheduled                True 
+
+$ kubectl describe pod lifecycle-failed | sed -n '/^Events:/,$p'
+Events:
+  Type    Reason     Age   From               Message
+  ----    ------     ----  ----               -------
+  Normal  Scheduled  15s   default-scheduler  Successfully assigned default/lifecycle-failed to minikube
+  Normal  Pulled     15s   kubelet            spec.containers{job}: Container image "busybox:1.36" already present on machine and can be accessed by the pod
+  Normal  Created    15s   kubelet            spec.containers{job}: Container created
+  Normal  Started    15s   kubelet            spec.containers{job}: Container started
+
+$ kubectl logs lifecycle-failed
+something broke
+
+################ 05-pod-lifecycle/05-crashloop.yaml ################
+$ kubectl apply -f 05-pod-lifecycle/05-crashloop.yaml
+pod/lifecycle-crashloop created
+
+# polling every 5s: Running -> Error -> CrashLoopBackOff, restarts climbing, back-off growing
+lifecycle-crashloop   0/1   ContainerCreating   0     0s
+lifecycle-crashloop   1/1   Running   1 (2s ago)   5s
+lifecycle-crashloop   0/1   Error   1 (7s ago)   10s
+lifecycle-crashloop   0/1   Error   1 (12s ago)   15s
+lifecycle-crashloop   0/1   Error   2 (15s ago)   20s
+lifecycle-crashloop   0/1   Error   2 (20s ago)   25s
+lifecycle-crashloop   0/1   Error   2 (26s ago)   31s
+lifecycle-crashloop   0/1   Error   2 (31s ago)   36s
+lifecycle-crashloop   0/1   Error   2 (36s ago)   41s
+lifecycle-crashloop   1/1   Running   3 (26s ago)   46s
+lifecycle-crashloop   0/1   Error   3 (31s ago)   51s
+lifecycle-crashloop   0/1   Error   3 (36s ago)   56s
+lifecycle-crashloop   0/1   Error   3 (41s ago)   61s
+lifecycle-crashloop   0/1   Error   3 (46s ago)   66s
+lifecycle-crashloop   0/1   Error   3 (51s ago)   71s
+lifecycle-crashloop   0/1   Error   3 (56s ago)   76s
+lifecycle-crashloop   0/1   Error   3 (62s ago)   82s
+lifecycle-crashloop   0/1   Error   3 (67s ago)   87s
+lifecycle-crashloop   0/1   Error   3 (72s ago)   92s
+lifecycle-crashloop   0/1   Error   3 (77s ago)   97s
+lifecycle-crashloop   1/1   Running   4 (56s ago)   102s
+lifecycle-crashloop   0/1   Error   4 (61s ago)   107s
+lifecycle-crashloop   0/1   Error   4 (66s ago)   112s
+lifecycle-crashloop   0/1   Error   4 (71s ago)   117s
+lifecycle-crashloop   0/1   Error   4 (76s ago)   2m2s
+lifecycle-crashloop   0/1   Error   4 (81s ago)   2m7s
+lifecycle-crashloop   0/1   Error   4 (86s ago)   2m12s
+lifecycle-crashloop   0/1   Error   4 (92s ago)   2m18s
+lifecycle-crashloop   0/1   Error   4 (97s ago)   2m23s
+lifecycle-crashloop   0/1   Error   4 (102s ago)   2m28s
+lifecycle-crashloop   0/1   Error   4 (107s ago)   2m33s
+lifecycle-crashloop   0/1   Error   4 (112s ago)   2m38s
+lifecycle-crashloop   0/1   Error   4 (117s ago)   2m43s
+lifecycle-crashloop   0/1   Error   4 (2m2s ago)   2m48s
+lifecycle-crashloop   0/1   Error   4 (2m8s ago)   2m54s
+lifecycle-crashloop   0/1   Error   4 (2m13s ago)   2m59s
+lifecycle-crashloop   0/1   CrashLoopBackOff   4 (81s ago)   3m4s
+
+$ kubectl get pod lifecycle-crashloop -o wide
+NAME                  READY   STATUS    RESTARTS      AGE    IP            NODE       NOMINATED NODE   READINESS GATES
+lifecycle-crashloop   1/1     Running   5 (81s ago)   3m4s   10.244.0.98   minikube   <none>           <none>
+
+$ kubectl get pod lifecycle-crashloop -o jsonpath='phase={.status.phase}  reason={.status.containerStatuses[0].state.*.reason}  restarts={.status.containerStatuses[0].restartCount}{"\n"}'
+phase=Running  reason=  restarts=5
+
+$ kubectl describe pod lifecycle-crashloop | sed -n '/^Conditions:/,/^Volumes:/p' | grep -v '^Volumes:'
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       True 
+  ContainersReady             True 
+  PodScheduled                True 
+
+$ kubectl describe pod lifecycle-crashloop | sed -n '/^Events:/,$p'
+Events:
+  Type     Reason     Age                 From               Message
+  ----     ------     ----                ----               -------
+  Normal   Scheduled  3m4s                default-scheduler  Successfully assigned default/lifecycle-crashloop to minikube
+  Warning  BackOff    5s (x5 over 2m58s)  kubelet            spec.containers{app}: Back-off restarting failed container app in pod lifecycle-crashloop_default(50b0e8f2-a2e6-4415-a754-88e680e7e341)
+  Normal   Pulled     0s (x6 over 3m4s)   kubelet            spec.containers{app}: Container image "busybox:1.36" already present on machine and can be accessed by the pod
+  Normal   Created    0s (x6 over 3m3s)   kubelet            spec.containers{app}: Container created
+  Normal   Started    0s (x6 over 3m3s)   kubelet            spec.containers{app}: Container started
+
+$ kubectl logs lifecycle-crashloop
+starting
+
+################ 05-pod-lifecycle/06-init-container.yaml ################
+$ kubectl apply -f 05-pod-lifecycle/06-init-container.yaml
+pod/lifecycle-init created
+
+# polling STATUS every second:
+   1 lifecycle-init   0/1   Init:0/2   0     0s
+   1 lifecycle-init   0/1   Init:0/2   0     1s
+   1 lifecycle-init   0/1   Init:0/2   0     2s
+   1 lifecycle-init   0/1   Init:0/2   0     4s
+   1 lifecycle-init   0/1   Init:0/2   0     5s
+   1 lifecycle-init   0/1   Init:0/2   0     6s
+   1 lifecycle-init   0/1   Init:0/2   0     7s
+   1 lifecycle-init   0/1   Init:0/2   0     8s
+   1 lifecycle-init   0/1   Init:1/2   0     9s
+   1 lifecycle-init   0/1   PodInitializing   0     10s
+   1 lifecycle-init   1/1   Running   0     11s
+   1 lifecycle-init   1/1   Running   0     12s
+   1 lifecycle-init   1/1   Running   0     13s
+   1 lifecycle-init   1/1   Running   0     14s
+
+$ kubectl get pod lifecycle-init -o wide
+NAME             READY   STATUS    RESTARTS   AGE   IP             NODE       NOMINATED NODE   READINESS GATES
+lifecycle-init   1/1     Running   0          15s   10.244.0.107   minikube   <none>           <none>
+
+$ kubectl get pod lifecycle-init -o jsonpath='phase={.status.phase}  reason={.status.containerStatuses[0].state.*.reason}  restarts={.status.containerStatuses[0].restartCount}{"\n"}'
+phase=Running  reason=  restarts=0
+
+$ kubectl describe pod lifecycle-init | sed -n '/^Conditions:/,/^Volumes:/p' | grep -v '^Volumes:'
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       True 
+  ContainersReady             True 
+  PodScheduled                True 
+
+$ kubectl describe pod lifecycle-init | sed -n '/^Events:/,$p'
+Events:
+  Type    Reason     Age   From               Message
+  ----    ------     ----  ----               -------
+  Normal  Scheduled  15s   default-scheduler  Successfully assigned default/lifecycle-init to minikube
+  Normal  Pulled     14s   kubelet            spec.initContainers{wait-a-bit}: Container image "busybox:1.36" already present on machine and can be accessed by the pod
+  Normal  Created    14s   kubelet            spec.initContainers{wait-a-bit}: Container created
+  Normal  Started    14s   kubelet            spec.initContainers{wait-a-bit}: Container started
+  Normal  Pulled     6s    kubelet            spec.initContainers{write-config}: Container image "busybox:1.36" already present on machine and can be accessed by the pod
+  Normal  Created    6s    kubelet            spec.initContainers{write-config}: Container created
+  Normal  Started    6s    kubelet            spec.initContainers{write-config}: Container started
+  Normal  Pulled     5s    kubelet            spec.containers{web}: Container image "nginx:1.26" already present on machine and can be accessed by the pod
+  Normal  Created    5s    kubelet            spec.containers{web}: Container created
+  Normal  Started    5s    kubelet            spec.containers{web}: Container started
+
+$ kubectl exec lifecycle-init -c web -- cat /usr/share/nginx/html/index.html
+hello from init
+
+################ 05-pod-lifecycle/07-image-pull-error.yaml ################
+$ kubectl apply -f 05-pod-lifecycle/07-image-pull-error.yaml
+pod/lifecycle-badimage created
+
+$ kubectl get pod lifecycle-badimage -o wide
+NAME                 READY   STATUS             RESTARTS   AGE   IP             NODE       NOMINATED NODE   READINESS GATES
+lifecycle-badimage   0/1     ImagePullBackOff   0          15s   10.244.0.109   minikube   <none>           <none>
+
+$ kubectl get pod lifecycle-badimage -o jsonpath='phase={.status.phase}  reason={.status.containerStatuses[0].state.*.reason}  restarts={.status.containerStatuses[0].restartCount}{"\n"}'
+phase=Pending  reason=ImagePullBackOff  restarts=0
+
+$ kubectl describe pod lifecycle-badimage | sed -n '/^Conditions:/,/^Volumes:/p' | grep -v '^Volumes:'
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       False 
+  ContainersReady             False 
+  PodScheduled                True 
+
+$ kubectl describe pod lifecycle-badimage | sed -n '/^Events:/,$p'
+Events:
+  Type     Reason     Age               From               Message
+  ----     ------     ----              ----               -------
+  Normal   Scheduled  15s               default-scheduler  Successfully assigned default/lifecycle-badimage to minikube
+  Warning  Failed     13s               kubelet            spec.containers{app}: Failed to pull image "nginx:this-tag-does-not-exist": rpc error: code = NotFound desc = failed to pull and unpack image "docker.io/library/nginx:this-tag-does-not-exist": failed to resolve reference "docker.io/library/nginx:this-tag-does-not-exist": docker.io/library/nginx:this-tag-does-not-exist: not found
+  Warning  Failed     13s               kubelet            spec.containers{app}: Error: ErrImagePull
+  Normal   BackOff    13s               kubelet            spec.containers{app}: Back-off pulling image "nginx:this-tag-does-not-exist"
+  Warning  Failed     13s               kubelet            spec.containers{app}: Error: ImagePullBackOff
+  Normal   Pulling    1s (x2 over 15s)  kubelet            spec.containers{app}: Pulling image "nginx:this-tag-does-not-exist"
+
+################ 05-pod-lifecycle/08-probes-and-hooks.yaml ################
+$ kubectl apply -f 05-pod-lifecycle/08-probes-and-hooks.yaml
+pod/lifecycle-probes created
+
+# polling until the readiness probe passes (READY 0/1 -> 1/1):
+lifecycle-probes   0/1   ContainerCreating   0     0s
+lifecycle-probes   0/1   Running   0     2s
+lifecycle-probes   0/1   Running   0     4s
+lifecycle-probes   0/1   Running   0     6s
+lifecycle-probes   0/1   Running   0     8s
+lifecycle-probes   1/1   Running   0     10s
+
+$ kubectl get pod lifecycle-probes -o wide
+NAME               READY   STATUS    RESTARTS   AGE   IP             NODE       NOMINATED NODE   READINESS GATES
+lifecycle-probes   1/1     Running   0          10s   10.244.0.110   minikube   <none>           <none>
+
+$ kubectl get pod lifecycle-probes -o jsonpath='phase={.status.phase}  reason={.status.containerStatuses[0].state.*.reason}  restarts={.status.containerStatuses[0].restartCount}{"\n"}'
+phase=Running  reason=  restarts=0
+
+$ kubectl describe pod lifecycle-probes | sed -n '/^Conditions:/,/^Volumes:/p' | grep -v '^Volumes:'
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       True 
+  ContainersReady             True 
+  PodScheduled                True 
+
+$ kubectl describe pod lifecycle-probes | sed -n '/^Events:/,$p'
+Events:
+  Type    Reason     Age   From               Message
+  ----    ------     ----  ----               -------
+  Normal  Scheduled  11s   default-scheduler  Successfully assigned default/lifecycle-probes to minikube
+  Normal  Pulled     11s   kubelet            spec.containers{web}: Container image "nginx:1.26" already present on machine and can be accessed by the pod
+  Normal  Created    11s   kubelet            spec.containers{web}: Container created
+  Normal  Started    11s   kubelet            spec.containers{web}: Container started
+
+$ kubectl exec lifecycle-probes -- cat /usr/share/nginx/html/hook.txt
+postStart ran at Wed Oct 7 06:32:45 UTC 2026
+
+# Delete it: preStop hook runs, then the container gets SIGTERM within the grace period
+$ kubectl delete pod lifecycle-probes --wait=false && sleep 2 && kubectl get pod lifecycle-probes
+pod "lifecycle-probes" deleted from default namespace
+NAME               READY   STATUS        RESTARTS   AGE
+lifecycle-probes   1/1     Terminating   0          13s
+
+$ sleep 6; kubectl get pod lifecycle-probes
+Error from server (NotFound): pods "lifecycle-probes" not found
+

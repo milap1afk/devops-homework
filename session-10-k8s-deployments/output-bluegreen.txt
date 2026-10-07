@@ -1,0 +1,77 @@
+$ kubectl apply -f 02-blue-green/blue.yaml -f 02-blue-green/service.yaml
+deployment.apps/app-blue created
+service/shop created
+
+$ kubectl rollout status deploy/app-blue --timeout=120s
+Waiting for deployment "app-blue" rollout to finish: 0 of 2 updated replicas are available...
+Waiting for deployment "app-blue" rollout to finish: 1 of 2 updated replicas are available...
+deployment "app-blue" successfully rolled out
+
+$ for i in 1 2 3; do kubectl exec tester -- curl -s http://shop; done
+Hello from BLUE (v1)
+Hello from BLUE (v1)
+Hello from BLUE (v1)
+
+# Deploy GREEN alongside BLUE (no traffic yet)
+$ kubectl apply -f 02-blue-green/green.yaml && kubectl rollout status deploy/app-green --timeout=120s
+deployment.apps/app-green created
+Waiting for deployment "app-green" rollout to finish: 0 of 2 updated replicas are available...
+Waiting for deployment "app-green" rollout to finish: 1 of 2 updated replicas are available...
+deployment "app-green" successfully rolled out
+
+$ kubectl get pods -l app=shop -L version
+NAME                         READY   STATUS    RESTARTS   AGE   VERSION
+app-blue-6799dc448d-645tz    1/1     Running   0          8s    blue
+app-blue-6799dc448d-cgdjz    1/1     Running   0          8s    blue
+app-green-7674665855-65kkc   1/1     Running   0          1s    green
+app-green-7674665855-s86dv   1/1     Running   0          1s    green
+
+$ kubectl get svc shop -o jsonpath='selector: {.spec.selector}{"\n"}'
+selector: {"app":"shop","version":"blue"}
+
+$ kubectl get endpointslices -l kubernetes.io/service-name=shop -o custom-columns=NAME:.metadata.name,ENDPOINTS:.endpoints[*].addresses[0]
+NAME         ENDPOINTS
+shop-576kw   10.244.0.66,10.244.0.65
+
+$ for i in 1 2 3; do kubectl exec tester -- curl -s http://shop; done
+Hello from BLUE (v1)
+Hello from BLUE (v1)
+Hello from BLUE (v1)
+
+# ---- SWITCH traffic to GREEN (one atomic selector change) ----
+$ kubectl patch service shop -p '{"spec":{"selector":{"app":"shop","version":"green"}}}'
+service/shop patched
+
+$ kubectl get svc shop -o jsonpath='selector: {.spec.selector}{"\n"}'
+selector: {"app":"shop","version":"green"}
+
+$ kubectl get endpointslices -l kubernetes.io/service-name=shop -o custom-columns=NAME:.metadata.name,ENDPOINTS:.endpoints[*].addresses[0]
+NAME         ENDPOINTS
+shop-576kw   10.244.0.67,10.244.0.68
+
+$ kubectl get pods -l version=green -o custom-columns=POD:.metadata.name,IP:.status.podIP
+POD                          IP
+app-green-7674665855-65kkc   10.244.0.67
+app-green-7674665855-s86dv   10.244.0.68
+
+$ for i in 1 2 3; do kubectl exec tester -- curl -s http://shop; done
+Hello from GREEN (v2)
+Hello from GREEN (v2)
+Hello from GREEN (v2)
+
+# ---- Instant rollback = switch the selector back ----
+$ kubectl patch service shop -p '{"spec":{"selector":{"version":"blue"}}}' && sleep 2 && kubectl exec tester -- curl -s http://shop
+service/shop patched
+Hello from BLUE (v1)
+
+$ kubectl patch service shop -p '{"spec":{"selector":{"version":"green"}}}' && sleep 2 && kubectl exec tester -- curl -s http://shop
+service/shop patched
+Hello from GREEN (v2)
+
+# Once green is verified, retire blue
+$ kubectl scale deploy app-blue --replicas=0 && kubectl get deploy -l app=shop 2>/dev/null; kubectl get deploy app-blue app-green
+deployment.apps/app-blue scaled
+NAME        READY   UP-TO-DATE   AVAILABLE   AGE
+app-blue    0/0     0            0           20s
+app-green   2/2     2            2           13s
+

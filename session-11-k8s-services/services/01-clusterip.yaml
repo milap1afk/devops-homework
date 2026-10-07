@@ -1,0 +1,12 @@
+# ClusterIP (default): a stable virtual IP reachable ONLY from inside the cluster
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-clusterip
+  namespace: s11
+spec:
+  type: ClusterIP
+  selector: { app: web }
+  ports:
+    - port: 80          # Service port
+      targetPort: http  # container port 5678 (by name)

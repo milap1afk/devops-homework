@@ -1,0 +1,78 @@
+$ kubectl apply -f 04-recreate/deployment.yaml && kubectl rollout status deploy/web-recreate --timeout=180s
+deployment.apps/web-recreate created
+Waiting for deployment "web-recreate" rollout to finish: 0 of 3 updated replicas are available...
+Waiting for deployment "web-recreate" rollout to finish: 1 of 3 updated replicas are available...
+Waiting for deployment "web-recreate" rollout to finish: 2 of 3 updated replicas are available...
+deployment "web-recreate" successfully rolled out
+
+$ kubectl describe deploy web-recreate | grep StrategyType
+StrategyType:       Recreate
+
+$ kubectl get pods -l app=web-recreate -o custom-columns=POD:.metadata.name,IMAGE:.spec.containers[0].image,STATUS:.status.phase
+POD                            IMAGE        STATUS
+web-recreate-96874487d-4vf8s   nginx:1.26   Running
+web-recreate-96874487d-mtthx   nginx:1.26   Running
+web-recreate-96874487d-wd5kp   nginx:1.26   Running
+
+# Start a watch, then update the image. Every OLD pod is terminated before ANY new pod is created.
+$ kubectl set image deploy/web-recreate nginx=nginx:1.27
+deployment.apps/web-recreate image updated
+
+$ kubectl rollout status deploy/web-recreate --timeout=180s
+Waiting for deployment "web-recreate" rollout to finish: 0 out of 3 new replicas have been updated...
+Waiting for deployment "web-recreate" rollout to finish: 0 out of 3 new replicas have been updated...
+Waiting for deployment "web-recreate" rollout to finish: 0 out of 3 new replicas have been updated...
+Waiting for deployment "web-recreate" rollout to finish: 0 out of 3 new replicas have been updated...
+Waiting for deployment "web-recreate" rollout to finish: 0 out of 3 new replicas have been updated...
+Waiting for deployment "web-recreate" rollout to finish: 0 of 3 updated replicas are available...
+Waiting for deployment "web-recreate" rollout to finish: 1 of 3 updated replicas are available...
+Waiting for deployment "web-recreate" rollout to finish: 2 of 3 updated replicas are available...
+deployment "web-recreate" successfully rolled out
+
+$ kubectl get pods -l app=web-recreate --watch-only   (events in order, timestamped by kubectl)
+POD                            IMAGE        PHASE     DELETING
+web-recreate-96874487d-4vf8s   nginx:1.26   Running   2026-10-07T06:13:19Z
+web-recreate-96874487d-mtthx   nginx:1.26   Running   2026-10-07T06:13:19Z
+web-recreate-96874487d-wd5kp   nginx:1.26   Running   2026-10-07T06:13:19Z
+web-recreate-96874487d-4vf8s   nginx:1.26   Running   2026-10-07T06:13:19Z
+web-recreate-96874487d-mtthx   nginx:1.26   Running   2026-10-07T06:13:19Z
+web-recreate-96874487d-wd5kp   nginx:1.26   Running   2026-10-07T06:13:19Z
+web-recreate-96874487d-wd5kp   nginx:1.26   Succeeded   2026-10-07T06:13:19Z
+web-recreate-96874487d-4vf8s   nginx:1.26   Succeeded   2026-10-07T06:13:19Z
+web-recreate-96874487d-mtthx   nginx:1.26   Succeeded   2026-10-07T06:13:19Z
+web-recreate-7cb7f76b97-nkz9h   nginx:1.27   Pending     <none>
+web-recreate-7cb7f76b97-rcvwx   nginx:1.27   Pending     <none>
+web-recreate-7cb7f76b97-k7zbs   nginx:1.27   Pending     <none>
+web-recreate-7cb7f76b97-rcvwx   nginx:1.27   Pending     <none>
+web-recreate-7cb7f76b97-nkz9h   nginx:1.27   Pending     <none>
+web-recreate-7cb7f76b97-k7zbs   nginx:1.27   Pending     <none>
+web-recreate-7cb7f76b97-rcvwx   nginx:1.27   Pending     <none>
+web-recreate-7cb7f76b97-k7zbs   nginx:1.27   Pending     <none>
+web-recreate-7cb7f76b97-nkz9h   nginx:1.27   Pending     <none>
+web-recreate-96874487d-4vf8s    nginx:1.26   Succeeded   2026-10-07T06:12:49Z
+web-recreate-96874487d-4vf8s    nginx:1.26   Succeeded   2026-10-07T06:12:49Z
+web-recreate-96874487d-wd5kp    nginx:1.26   Succeeded   2026-10-07T06:12:49Z
+web-recreate-96874487d-wd5kp    nginx:1.26   Succeeded   2026-10-07T06:12:49Z
+web-recreate-96874487d-mtthx    nginx:1.26   Succeeded   2026-10-07T06:12:49Z
+web-recreate-96874487d-mtthx    nginx:1.26   Succeeded   2026-10-07T06:12:49Z
+web-recreate-7cb7f76b97-nkz9h   nginx:1.27   Pending     <none>
+web-recreate-7cb7f76b97-k7zbs   nginx:1.27   Pending     <none>
+web-recreate-7cb7f76b97-rcvwx   nginx:1.27   Pending     <none>
+web-recreate-7cb7f76b97-k7zbs   nginx:1.27   Running     <none>
+web-recreate-7cb7f76b97-rcvwx   nginx:1.27   Running     <none>
+web-recreate-7cb7f76b97-nkz9h   nginx:1.27   Running     <none>
+
+$ kubectl describe deploy web-recreate | sed -n '/Events:/,$p'
+Events:
+  Type    Reason             Age   From                   Message
+  ----    ------             ----  ----                   -------
+  Normal  ScalingReplicaSet  6s    deployment-controller  Scaled up replica set web-recreate-96874487d from 0 to 3
+  Normal  ScalingReplicaSet  3s    deployment-controller  Scaled down replica set web-recreate-96874487d from 3 to 0
+  Normal  ScalingReplicaSet  3s    deployment-controller  Scaled up replica set web-recreate-7cb7f76b97 from 0 to 3
+
+# Note the events: 'Scaled down ... from 3 to 0' happens BEFORE 'Scaled up ... to 3'
+$ kubectl get rs -l app=web-recreate
+NAME                      DESIRED   CURRENT   READY   AGE
+web-recreate-7cb7f76b97   3         3         3       3s
+web-recreate-96874487d    0         0         0       6s
+

@@ -1,0 +1,55 @@
+$ kubectl -n s11 exec client -- cat /etc/resolv.conf
+search s11.svc.cluster.local svc.cluster.local cluster.local
+nameserver 10.96.0.10
+options ndots:5
+
+# Short name works only inside the same namespace (search list adds s11.svc.cluster.local)
+$ kubectl -n s11 exec client -- nslookup web-clusterip | tail -3
+Name:	web-clusterip.s11.svc.cluster.local
+Address: 10.97.245.215
+
+
+$ kubectl -n s11 exec client -- dig +search +short web-clusterip.s11
+10.97.245.215
+
+$ kubectl -n s11 exec client -- dig +search +short web-clusterip.s11.svc
+10.97.245.215
+
+$ kubectl -n s11 exec client -- dig +short web-clusterip.s11.svc.cluster.local
+10.97.245.215
+
+# A Service in ANOTHER namespace needs at least <svc>.<namespace>:
+$ kubectl -n s11 exec client -- dig +search +short kubernetes          # -> kubernetes.s11.svc.cluster.local: does not exist
+
+$ kubectl -n s11 exec client -- dig +search +short kubernetes.default
+10.96.0.1
+
+$ kubectl -n s11 exec client -- dig +short kubernetes.default.svc.cluster.local
+10.96.0.1
+
+$ kubectl -n s11 exec client -- dig +short kube-dns.kube-system.svc.cluster.local
+10.96.0.10
+
+# SRV record (port discovery) and Pod A record (dashed IP):
+$ kubectl -n s11 exec client -- dig +short SRV _http._tcp.db-headless.s11.svc.cluster.local
+0 33 5678 db-0.db-headless.s11.svc.cluster.local.
+0 33 5678 db-1.db-headless.s11.svc.cluster.local.
+0 33 5678 db-2.db-headless.s11.svc.cluster.local.
+
+$ kubectl -n s11 exec client -- dig +short 10-244-0-99.s11.pod.cluster.local
+10.244.0.99
+
+# Reverse lookup of the ClusterIP
+$ kubectl -n s11 exec client -- dig +short -x 10.97.245.215
+web-clusterip.s11.svc.cluster.local.
+
+# Pod-to-Service across namespaces: a Pod in 'default' calling the s11 Service
+$ kubectl -n default run dnstest --restart=Never --image=curlimages/curl:8.10.1 -- sh -c 'echo FQDN:; curl -s http://web-clusterip.s11.svc.cluster.local; echo SHORT NAME:; curl -s -m 3 http://web-clusterip || echo "curl: (6) Could not resolve host: web-clusterip"'
+pod/dnstest created
+
+$ kubectl -n default logs dnstest
+FQDN:
+hello from web-78cc98ffd7-wwdpk
+SHORT NAME:
+curl: (6) Could not resolve host: web-clusterip
+

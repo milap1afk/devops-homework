@@ -1,0 +1,40 @@
+$ kubectl apply -f services/01-clusterip.yaml
+service/web-clusterip created
+
+$ kubectl -n s11 get svc web-clusterip -o wide
+NAME            TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE   SELECTOR
+web-clusterip   ClusterIP   10.97.245.215   <none>        80/TCP    7s    app=web
+
+$ kubectl -n s11 get pods -l app=web -o wide
+NAME                   READY   STATUS    RESTARTS   AGE   IP             NODE       NOMINATED NODE   READINESS GATES
+web-78cc98ffd7-427kb   1/1     Running   0          37s   10.244.0.102   minikube   <none>           <none>
+web-78cc98ffd7-t5gg5   1/1     Running   0          37s   10.244.0.100   minikube   <none>           <none>
+web-78cc98ffd7-wwdpk   1/1     Running   0          37s   10.244.0.101   minikube   <none>           <none>
+
+$ kubectl -n s11 get endpointslices -l kubernetes.io/service-name=web-clusterip
+NAME                  ADDRESSTYPE   PORTS   ENDPOINTS                                AGE
+web-clusterip-cs7xh   IPv4          5678    10.244.0.101,10.244.0.102,10.244.0.100   7s
+
+$ kubectl -n s11 describe svc web-clusterip | grep -E "^(Type|IP|Port|TargetPort|Endpoints)"
+Type:                     ClusterIP
+IP Family Policy:         SingleStack
+IP Families:              IPv4
+IP:                       10.97.245.215
+IPs:                      10.97.245.215
+Port:                     <unset>  80/TCP
+TargetPort:               http/TCP
+Endpoints:                10.244.0.101:5678,10.244.0.102:5678,10.244.0.100:5678
+
+# From inside the cluster, by DNS name -> requests are spread across the 3 Pods
+$ kubectl -n s11 exec client -- sh -c 'for i in $(seq 9); do curl -s http://web-clusterip; done' | sort | uniq -c
+   2 hello from web-78cc98ffd7-427kb
+   2 hello from web-78cc98ffd7-t5gg5
+   5 hello from web-78cc98ffd7-wwdpk
+
+$ kubectl -n s11 exec client -- curl -s http://10.97.245.215
+hello from web-78cc98ffd7-wwdpk
+
+# From OUTSIDE the cluster (the Mac) the ClusterIP is not reachable:
+$ curl -s -m 3 http://10.97.245.215 || echo 'curl: timed out -> ClusterIP is internal only'
+curl: timed out -> ClusterIP is internal only
+

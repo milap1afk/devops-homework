@@ -1,0 +1,96 @@
+$ kubectl -n kube-system get deploy coredns
+NAME      READY   UP-TO-DATE   AVAILABLE   AGE
+coredns   1/1     1            1           37m
+
+$ kubectl -n kube-system get pods -l k8s-app=kube-dns -o wide
+NAME                       READY   STATUS    RESTARTS   AGE   IP           NODE       NOMINATED NODE   READINESS GATES
+coredns-559f6c778d-ktpfn   1/1     Running   0          37m   10.244.0.3   minikube   <none>           <none>
+
+$ kubectl -n kube-system get svc kube-dns
+NAME       TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)                  AGE
+kube-dns   ClusterIP   10.96.0.10   <none>        53/UDP,53/TCP,9153/TCP   37m
+
+$ kubectl -n kube-system get endpointslices -l kubernetes.io/service-name=kube-dns
+NAME             ADDRESSTYPE   PORTS        ENDPOINTS    AGE
+kube-dns-d5v46   IPv4          53,53,9153   10.244.0.3   37m
+
+$ kubectl -n kube-system get configmap coredns -o jsonpath='{.data.Corefile}'
+.:53 {
+    log
+    errors
+    health {
+       lameduck 5s
+    }
+    ready
+    kubernetes cluster.local in-addr.arpa ip6.arpa {
+       pods insecure
+       fallthrough in-addr.arpa ip6.arpa
+       ttl 30
+    }
+    prometheus :9153
+    hosts {
+       192.168.5.2 host.minikube.internal
+       fallthrough
+    }
+    forward . /etc/resolv.conf {
+       max_concurrent 1000
+    }
+    cache 30 {
+       disable success cluster.local
+       disable denial cluster.local
+    }
+    loop
+    reload
+    loadbalance
+}
+
+# nameserver in every Pod = kube-dns ClusterIP:
+$ kubectl -n s11 exec client -- grep nameserver /etc/resolv.conf
+nameserver 10.96.0.10
+
+$ kubectl get pod -n s11 client -o jsonpath='dnsPolicy={.spec.dnsPolicy}{"\n"}'
+dnsPolicy=ClusterFirst
+
+# Query CoreDNS directly, showing the full answer section
+$ kubectl -n s11 exec client -- dig web-clusterip.s11.svc.cluster.local +noall +answer +stats | grep -vE "^;; (WHEN|MSG)"
+web-clusterip.s11.svc.cluster.local. 30	IN A	10.97.245.215
+;; Query time: 10 msec
+;; SERVER: 10.96.0.10#53(10.96.0.10) (UDP)
+
+
+# External names are forwarded upstream (forward . /etc/resolv.conf)
+$ kubectl -n s11 exec client -- dig +short google.com | head -2
+172.217.24.14
+
+# The 'log' plugin (enabled in minikube's Corefile) logs every query. Make one and read CoreDNS logs:
+$ kubectl -n s11 exec client -- dig +short web-clusterip.s11.svc.cluster.local
+10.97.245.215
+
+$ kubectl -n kube-system logs -l k8s-app=kube-dns --tail=200 | grep web-clusterip | tail -2
+[INFO] 10.244.0.99:33664 - 27238 "A IN web-clusterip.s11.svc.cluster.local. udp 76 false 1232" NOERROR qr,aa,rd 104 0.002531638s
+[INFO] 10.244.0.99:41508 - 23098 "A IN web-clusterip.s11.svc.cluster.local. udp 76 false 1232" NOERROR qr,aa,rd 104 0.000099675s
+
+# Troubleshooting: break DNS for one Pod and diagnose it
+$ kubectl -n s11 run baddns --image=nicolaka/netshoot:v0.13 --restart=Never --overrides='{"spec":{"dnsPolicy":"None","dnsConfig":{"nameservers":["10.255.255.1"]}}}' -- sleep 300
+pod/baddns created
+
+$ kubectl -n s11 exec baddns -- nslookup -timeout=2 web-clusterip.s11.svc.cluster.local
+;; communications error to 10.255.255.1#53: timed out
+;; communications error to 10.255.255.1#53: timed out
+;; communications error to 10.255.255.1#53: timed out
+;; no servers could be reached
+
+
+command terminated with exit code 1
+
+$ kubectl -n s11 exec baddns -- cat /etc/resolv.conf
+nameserver 10.255.255.1
+
+# Root cause: wrong nameserver (dnsPolicy None). Compare with a healthy Pod, then fix by recreating with default dnsPolicy
+$ kubectl -n s11 exec baddns -- nslookup -timeout=2 web-clusterip.s11.svc.cluster.local 10.96.0.10 | tail -2
+Address: 10.97.245.215
+
+
+$ kubectl -n s11 delete pod baddns --now
+pod "baddns" deleted from s11 namespace
+

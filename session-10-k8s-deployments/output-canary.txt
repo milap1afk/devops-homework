@@ -1,0 +1,54 @@
+$ kubectl apply -f 03-canary/stable.yaml -f 03-canary/service.yaml
+deployment.apps/app-stable created
+service/checkout created
+
+$ kubectl rollout status deploy/app-stable --timeout=180s
+Waiting for deployment "app-stable" rollout to finish: 0 out of 9 new replicas have been updated...
+Waiting for deployment "app-stable" rollout to finish: 0 of 9 updated replicas are available...
+Waiting for deployment "app-stable" rollout to finish: 1 of 9 updated replicas are available...
+Waiting for deployment "app-stable" rollout to finish: 2 of 9 updated replicas are available...
+Waiting for deployment "app-stable" rollout to finish: 3 of 9 updated replicas are available...
+Waiting for deployment "app-stable" rollout to finish: 4 of 9 updated replicas are available...
+Waiting for deployment "app-stable" rollout to finish: 5 of 9 updated replicas are available...
+Waiting for deployment "app-stable" rollout to finish: 6 of 9 updated replicas are available...
+Waiting for deployment "app-stable" rollout to finish: 7 of 9 updated replicas are available...
+Waiting for deployment "app-stable" rollout to finish: 8 of 9 updated replicas are available...
+deployment "app-stable" successfully rolled out
+
+$ kubectl apply -f 03-canary/canary.yaml && kubectl rollout status deploy/app-canary --timeout=120s
+deployment.apps/app-canary created
+Waiting for deployment "app-canary" rollout to finish: 0 of 1 updated replicas are available...
+deployment "app-canary" successfully rolled out
+
+$ kubectl get deploy -l app=checkout 2>/dev/null; kubectl get deploy app-stable app-canary
+NAME         READY   UP-TO-DATE   AVAILABLE   AGE
+app-stable   9/9     9            9           8s
+app-canary   1/1     1            1           7s
+
+$ kubectl get pods -l app=checkout -L track --no-headers | awk "{print \$NF}" | sort | uniq -c
+   1 canary
+   9 stable
+
+# Send 200 requests through the Service and count which version answered
+$ kubectl exec tester -- sh -c 'for i in $(seq 200); do curl -s http://checkout; done' | sort | uniq -c
+  21 canary v2
+ 179 stable v1
+
+# Canary looks healthy -> increase its share to ~30% (7 stable : 3 canary)
+$ kubectl scale deploy app-stable --replicas=7 && kubectl scale deploy app-canary --replicas=3 && kubectl rollout status deploy/app-canary --timeout=120s && kubectl rollout status deploy/app-stable --timeout=120s
+deployment.apps/app-stable scaled
+deployment.apps/app-canary scaled
+Waiting for deployment "app-canary" rollout to finish: 1 out of 3 new replicas have been updated...
+Waiting for deployment "app-canary" rollout to finish: 1 of 3 updated replicas are available...
+Waiting for deployment "app-canary" rollout to finish: 2 of 3 updated replicas are available...
+deployment "app-canary" successfully rolled out
+deployment "app-stable" successfully rolled out
+
+$ kubectl get pods -l app=checkout -L track --no-headers | awk "{print \$NF}" | sort | uniq -c
+   3 canary
+   7 stable
+
+$ kubectl exec tester -- sh -c 'for i in $(seq 200); do curl -s http://checkout; done' | sort | uniq -c
+  50 canary v2
+ 150 stable v1
+

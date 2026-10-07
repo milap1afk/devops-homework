@@ -1,0 +1,13 @@
+# NodePort: ClusterIP + a port (30000-32767) opened on EVERY node's IP
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-nodeport
+  namespace: s11
+spec:
+  type: NodePort
+  selector: { app: web }
+  ports:
+    - port: 80
+      targetPort: http
+      nodePort: 30080

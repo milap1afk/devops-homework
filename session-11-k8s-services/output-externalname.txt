@@ -1,0 +1,46 @@
+$ kubectl apply -f services/04-externalname.yaml
+service/external-api unchanged
+
+$ kubectl -n s11 get svc external-api
+NAME           TYPE           CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+external-api   ExternalName   <none>       httpbin.org   <none>    24s
+
+# DNS answers with a CNAME to the external host (no ClusterIP, no endpoints):
+$ kubectl -n s11 exec client -- dig +short external-api.s11.svc.cluster.local
+httpbin.org.
+18.233.182.23
+100.58.34.217
+34.227.237.26
+98.89.203.252
+54.159.186.149
+34.193.104.167
+3.90.119.127
+52.21.224.34
+
+$ kubectl -n s11 exec client -- nslookup external-api | head -8
+Server:		10.96.0.10
+Address:	10.96.0.10#53
+
+external-api.s11.svc.cluster.local	canonical name = httpbin.org.
+Name:	httpbin.org
+Address: 52.21.224.34
+Name:	httpbin.org
+Address: 34.193.104.167
+
+# Call it by the in-cluster name (Host header set because the remote server routes by hostname):
+$ kubectl -n s11 exec client -- curl -s -m 10 -H 'Host: httpbin.org' http://external-api/get | head -12 | sed -E 's/("origin": ")[^"]+/\1<my-public-ip-redacted>/'
+{
+  "args": {}, 
+  "headers": {
+    "Accept": "*/*", 
+    "Host": "httpbin.org", 
+    "User-Agent": "curl/8.7.1", 
+    "X-Amzn-Trace-Id": "Root=1-6ac5e747-02e6b1596060fc6d4bd219d0"
+  }, 
+  "origin": "<my-public-ip-redacted>", 
+  "url": "http://httpbin.org/get"
+}
+
+$ kubectl -n s11 get endpointslices -l kubernetes.io/service-name=external-api
+No resources found in s11 namespace.
+

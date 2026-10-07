@@ -1,0 +1,29 @@
+$ kubectl apply -f services/02-nodeport.yaml
+service/web-nodeport created
+
+$ kubectl -n s11 get svc web-nodeport
+NAME           TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)        AGE
+web-nodeport   NodePort   10.100.54.249   <none>        80:30080/TCP   6s
+
+$ kubectl get nodes -o wide | awk "{print \$1, \$6}"
+NAME INTERNAL-IP
+minikube 192.168.49.2
+
+# NodeIP:NodePort works from anywhere that can reach the node (here: from inside the node and from a Pod)
+$ minikube ssh -- curl -s http://192.168.49.2:30080
+hello from web-78cc98ffd7-t5gg5
+
+$ kubectl -n s11 exec client -- curl -s http://192.168.49.2:30080
+hello from web-78cc98ffd7-427kb
+
+# The NodePort Service still has a ClusterIP too:
+$ kubectl -n s11 exec client -- curl -s http://web-nodeport
+hello from web-78cc98ffd7-427kb
+
+# From the Mac, minikube (Docker driver) needs a forwarded URL to reach the node:
+$ echo http://127.0.0.1:60453
+http://127.0.0.1:60453
+
+$ curl -s http://127.0.0.1:60453
+hello from web-78cc98ffd7-wwdpk
+
