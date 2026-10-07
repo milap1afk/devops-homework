@@ -1,0 +1,97 @@
+$ kubectl create namespace basics
+namespace/basics created
+
+$ kubectl run hello-pod -n basics --image=nginx:1.27 --labels=app=hello
+pod/hello-pod created
+
+$ kubectl wait -n basics --for=condition=Ready pod/hello-pod --timeout=120s
+pod/hello-pod condition met
+
+$ kubectl get pods -n basics --show-labels
+NAME        READY   STATUS    RESTARTS   AGE   LABELS
+hello-pod   1/1     Running   0          1s    app=hello
+
+$ kubectl create deployment hello-deploy -n basics --image=nginx:1.27 --replicas=2
+deployment.apps/hello-deploy created
+
+$ kubectl rollout status -n basics deploy/hello-deploy
+Waiting for deployment "hello-deploy" rollout to finish: 0 of 2 updated replicas are available...
+Waiting for deployment "hello-deploy" rollout to finish: 1 of 2 updated replicas are available...
+deployment "hello-deploy" successfully rolled out
+
+$ kubectl get deploy,rs,pods -n basics
+NAME                           READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/hello-deploy   2/2     2            2           0s
+
+NAME                                     DESIRED   CURRENT   READY   AGE
+replicaset.apps/hello-deploy-fc8d4d6c6   2         2         2       0s
+
+NAME                               READY   STATUS    RESTARTS   AGE
+pod/hello-deploy-fc8d4d6c6-jxwr8   1/1     Running   0          0s
+pod/hello-deploy-fc8d4d6c6-xlg22   1/1     Running   0          0s
+pod/hello-pod                      1/1     Running   0          1s
+
+$ kubectl expose deployment hello-deploy -n basics --port=80
+service/hello-deploy exposed
+
+$ kubectl create configmap hello-config -n basics --from-literal=GREETING=namaste
+configmap/hello-config created
+
+$ kubectl get all,cm -n basics
+NAME                               READY   STATUS    RESTARTS   AGE
+pod/hello-deploy-fc8d4d6c6-jxwr8   1/1     Running   0          1s
+pod/hello-deploy-fc8d4d6c6-xlg22   1/1     Running   0          1s
+pod/hello-pod                      1/1     Running   0          2s
+
+NAME                   TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
+service/hello-deploy   ClusterIP   10.99.39.228   <none>        80/TCP    1s
+
+NAME                           READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/hello-deploy   2/2     2            2           1s
+
+NAME                                     DESIRED   CURRENT   READY   AGE
+replicaset.apps/hello-deploy-fc8d4d6c6   2         2         2       1s
+
+NAME                         DATA   AGE
+configmap/hello-config       1      1s
+configmap/kube-root-ca.crt   1      2s
+
+$ kubectl explain deployment.spec.replicas
+GROUP:      apps
+KIND:       Deployment
+VERSION:    v1
+
+FIELD: replicas <integer>
+
+
+DESCRIPTION:
+    Number of desired pods. This is a pointer to distinguish between explicit
+    zero and not specified. Defaults to 1.
+    
+
+
+$ kubectl get pod hello-pod -n basics -o yaml | head -20
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: "2026-10-07T06:38:12Z"
+  generation: 1
+  labels:
+    app: hello
+  name: hello-pod
+  namespace: basics
+  resourceVersion: "6114"
+  uid: 1faf053f-75f7-45f6-b47c-8f9096f797d3
+spec:
+  containers:
+  - image: nginx:1.27
+    imagePullPolicy: IfNotPresent
+    name: hello-pod
+    resources: {}
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+
+$ kubectl delete ns basics
+namespace "basics" deleted
+

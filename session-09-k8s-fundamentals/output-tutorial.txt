@@ -1,0 +1,183 @@
+# NOTE: the tutorial's image gcr.io/k8s-minikube/kubernetes-bootcamp:v1 is no longer available (gcr.io was shut down)
+# and docker.io/jocatalin/kubernetes-bootcamp:v2 is amd64-only. An equivalent app was rebuilt from bootcamp-app/
+# (same output, port 8080) and loaded into minikube:  docker build --build-arg VERSION=1 -t kubernetes-bootcamp:v1 bootcamp-app && minikube image load kubernetes-bootcamp:v1
+
+######## Module 2: Create a Deployment ########
+$ kubectl create deployment kubernetes-bootcamp --image=kubernetes-bootcamp:v1
+deployment.apps/kubernetes-bootcamp created
+
+$ kubectl rollout status deploy/kubernetes-bootcamp --timeout=180s
+Waiting for deployment "kubernetes-bootcamp" rollout to finish: 0 of 1 updated replicas are available...
+deployment "kubernetes-bootcamp" successfully rolled out
+
+$ kubectl get deployments
+NAME                  READY   UP-TO-DATE   AVAILABLE   AGE
+kubernetes-bootcamp   1/1     1            1           0s
+
+######## Module 3: Explore the app (Pods & Nodes) ########
+$ kubectl get pods -o wide
+NAME                                   READY   STATUS        RESTARTS   AGE   IP             NODE       NOMINATED NODE   READINESS GATES
+kubernetes-bootcamp-6b9c787c5d-h88pr   1/1     Terminating   0          44s   10.244.0.129   minikube   <none>           <none>
+kubernetes-bootcamp-6b9c787c5d-jtmsh   1/1     Terminating   0          45s   10.244.0.128   minikube   <none>           <none>
+kubernetes-bootcamp-9dc945679-xwzdb    1/1     Running       0          0s    10.244.0.131   minikube   <none>           <none>
+
+$ kubectl describe pod kubernetes-bootcamp-6b9c787c5d-h88pr | sed -n '1,/^Conditions:/p' | grep -E '^(Name|Namespace|Node|Status|IP|Controlled By|    Image:|    Port:)'
+Name:                      kubernetes-bootcamp-6b9c787c5d-h88pr
+Namespace:                 default
+Node:                      minikube/192.168.49.2
+Status:                    Terminating (lasts <invalid>)
+IP:                        10.244.0.129
+IPs:
+Controlled By:  ReplicaSet/kubernetes-bootcamp-6b9c787c5d
+    Image:          kubernetes-bootcamp:v2
+    Port:           <none>
+
+$ kubectl logs kubernetes-bootcamp-6b9c787c5d-h88pr
+Kubernetes Bootcamp App Started At: Wed Oct 07 2026 06:47:30 GMT+0000 (Coordinated Universal Time) | Running On:  kubernetes-bootcamp-6b9c787c5d-h88pr
+Running On: kubernetes-bootcamp-6b9c787c5d-h88pr | Total Requests: 1 | App Uptime: 5.566 seconds | Log Time: Wed Oct 07 2026 06:47:35 GMT+0000 (Coordinated Universal Time)
+
+$ kubectl exec kubernetes-bootcamp-6b9c787c5d-h88pr -- env | grep -E 'HOSTNAME|KUBERNETES_SERVICE_HOST'
+HOSTNAME=kubernetes-bootcamp-6b9c787c5d-h88pr
+KUBERNETES_SERVICE_HOST=10.96.0.1
+
+$ kubectl exec kubernetes-bootcamp-6b9c787c5d-h88pr -- curl -s http://localhost:8080
+Hello Kubernetes bootcamp! | Running on: kubernetes-bootcamp-6b9c787c5d-h88pr | v=2
+
+######## Module 4: Expose the app publicly (Service) ########
+$ kubectl expose deployment/kubernetes-bootcamp --type=NodePort --port 8080
+service/kubernetes-bootcamp exposed
+
+$ kubectl get services
+NAME                  TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)          AGE
+kubernetes            ClusterIP   10.96.0.1      <none>        443/TCP          50m
+kubernetes-bootcamp   NodePort    10.97.90.128   <none>        8080:30156/TCP   0s
+
+$ kubectl describe services/kubernetes-bootcamp | grep -E "^(Name|Type|IP:|Port|NodePort|Endpoints)"
+Name:                     kubernetes-bootcamp
+Namespace:                default
+Type:                     NodePort
+IP:                       10.97.90.128
+Port:                     <unset>  8080/TCP
+NodePort:                 <unset>  30156/TCP
+Endpoints:                10.244.0.131:8080
+
+$ echo NODE_PORT=30156
+NODE_PORT=30156
+
+$ minikube ssh -- curl -s http://$(minikube ip):30156
+Hello Kubernetes bootcamp! | Running on: kubernetes-bootcamp-9dc945679-xwzdb | v=1
+
+# Labels: query and add
+$ kubectl get pods -l app=kubernetes-bootcamp
+NAME                                   READY   STATUS        RESTARTS   AGE
+kubernetes-bootcamp-6b9c787c5d-h88pr   1/1     Terminating   0          46s
+kubernetes-bootcamp-6b9c787c5d-jtmsh   1/1     Terminating   0          47s
+kubernetes-bootcamp-9dc945679-xwzdb    1/1     Running       0          2s
+
+$ kubectl label pods kubernetes-bootcamp-6b9c787c5d-h88pr version=v1 && kubectl get pods -l version=v1
+pod/kubernetes-bootcamp-6b9c787c5d-h88pr labeled
+NAME                                   READY   STATUS        RESTARTS   AGE
+kubernetes-bootcamp-6b9c787c5d-h88pr   1/1     Terminating   0          46s
+
+######## Module 5: Scale the app ########
+$ kubectl scale deployments/kubernetes-bootcamp --replicas=4
+deployment.apps/kubernetes-bootcamp scaled
+
+$ kubectl rollout status deploy/kubernetes-bootcamp --timeout=180s
+Waiting for deployment "kubernetes-bootcamp" rollout to finish: 1 of 4 updated replicas are available...
+Waiting for deployment "kubernetes-bootcamp" rollout to finish: 2 of 4 updated replicas are available...
+Waiting for deployment "kubernetes-bootcamp" rollout to finish: 3 of 4 updated replicas are available...
+deployment "kubernetes-bootcamp" successfully rolled out
+
+$ kubectl get deployments
+NAME                  READY   UP-TO-DATE   AVAILABLE   AGE
+kubernetes-bootcamp   4/4     4            4           2s
+
+$ kubectl get pods -o wide -l app=kubernetes-bootcamp
+NAME                                   READY   STATUS        RESTARTS   AGE   IP             NODE       NOMINATED NODE   READINESS GATES
+kubernetes-bootcamp-6b9c787c5d-h88pr   1/1     Terminating   0          46s   10.244.0.129   minikube   <none>           <none>
+kubernetes-bootcamp-6b9c787c5d-jtmsh   1/1     Terminating   0          47s   10.244.0.128   minikube   <none>           <none>
+kubernetes-bootcamp-9dc945679-nhr9q    1/1     Running       0          0s    10.244.0.134   minikube   <none>           <none>
+kubernetes-bootcamp-9dc945679-pk9t9    1/1     Running       0          0s    10.244.0.133   minikube   <none>           <none>
+kubernetes-bootcamp-9dc945679-sc2ml    1/1     Running       0          0s    10.244.0.132   minikube   <none>           <none>
+kubernetes-bootcamp-9dc945679-xwzdb    1/1     Running       0          2s    10.244.0.131   minikube   <none>           <none>
+
+# Load balancing: requests reach different Pods
+$ for i in 1 2 3 4 5 6; do minikube ssh -- curl -s http://$(minikube ip):30156; done
+Hello Kubernetes bootcamp! | Running on: kubernetes-bootcamp-9dc945679-xwzdb | v=1
+Hello Kubernetes bootcamp! | Running on: kubernetes-bootcamp-9dc945679-xwzdb | v=1
+Hello Kubernetes bootcamp! | Running on: kubernetes-bootcamp-9dc945679-sc2ml | v=1
+Hello Kubernetes bootcamp! | Running on: kubernetes-bootcamp-9dc945679-sc2ml | v=1
+Hello Kubernetes bootcamp! | Running on: kubernetes-bootcamp-9dc945679-xwzdb | v=1
+Hello Kubernetes bootcamp! | Running on: kubernetes-bootcamp-9dc945679-nhr9q | v=1
+
+$ kubectl scale deployments/kubernetes-bootcamp --replicas=2 && sleep 5 && kubectl get pods -l app=kubernetes-bootcamp
+deployment.apps/kubernetes-bootcamp scaled
+NAME                                   READY   STATUS        RESTARTS   AGE
+kubernetes-bootcamp-6b9c787c5d-h88pr   1/1     Terminating   0          59s
+kubernetes-bootcamp-6b9c787c5d-jtmsh   1/1     Terminating   0          60s
+kubernetes-bootcamp-9dc945679-nhr9q    1/1     Running       0          13s
+kubernetes-bootcamp-9dc945679-pk9t9    1/1     Terminating   0          13s
+kubernetes-bootcamp-9dc945679-sc2ml    1/1     Terminating   0          13s
+kubernetes-bootcamp-9dc945679-xwzdb    1/1     Running       0          15s
+
+######## Module 6: Rolling update ########
+$ kubectl set image deployments/kubernetes-bootcamp kubernetes-bootcamp=kubernetes-bootcamp:v2
+deployment.apps/kubernetes-bootcamp image updated
+
+$ kubectl rollout status deployments/kubernetes-bootcamp --timeout=180s
+Waiting for deployment "kubernetes-bootcamp" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "kubernetes-bootcamp" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "kubernetes-bootcamp" rollout to finish: 2 old replicas are pending termination...
+Waiting for deployment "kubernetes-bootcamp" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "kubernetes-bootcamp" rollout to finish: 1 old replicas are pending termination...
+deployment "kubernetes-bootcamp" successfully rolled out
+
+$ kubectl get pods -l app=kubernetes-bootcamp -o custom-columns=POD:.metadata.name,IMAGE:.spec.containers[0].image
+POD                                    IMAGE
+kubernetes-bootcamp-6b9c787c5d-h88pr   kubernetes-bootcamp:v2
+kubernetes-bootcamp-6b9c787c5d-jtmsh   kubernetes-bootcamp:v2
+kubernetes-bootcamp-6b9c787c5d-l9qpg   kubernetes-bootcamp:v2
+kubernetes-bootcamp-6b9c787c5d-qdjrr   kubernetes-bootcamp:v2
+kubernetes-bootcamp-9dc945679-nhr9q    kubernetes-bootcamp:v1
+kubernetes-bootcamp-9dc945679-pk9t9    kubernetes-bootcamp:v1
+kubernetes-bootcamp-9dc945679-sc2ml    kubernetes-bootcamp:v1
+kubernetes-bootcamp-9dc945679-xwzdb    kubernetes-bootcamp:v1
+
+$ minikube ssh -- curl -s http://$(minikube ip):30156
+Hello Kubernetes bootcamp! | Running on: kubernetes-bootcamp-6b9c787c5d-l9qpg | v=2
+
+# Bad update (tag v10 does not exist) -> rollout stuck -> roll back
+$ kubectl set image deployments/kubernetes-bootcamp kubernetes-bootcamp=kubernetes-bootcamp:v10
+deployment.apps/kubernetes-bootcamp image updated
+
+$ kubectl get pods -l app=kubernetes-bootcamp
+NAME                                   READY   STATUS             RESTARTS   AGE
+kubernetes-bootcamp-6b9c787c5d-l9qpg   1/1     Running            0          32s
+kubernetes-bootcamp-6b9c787c5d-qdjrr   1/1     Running            0          32s
+kubernetes-bootcamp-76d9d4cf45-j5f8r   0/1     ImagePullBackOff   0          25s
+
+$ kubectl rollout undo deployments/kubernetes-bootcamp
+deployment.apps/kubernetes-bootcamp rolled back
+
+$ kubectl rollout status deployments/kubernetes-bootcamp --timeout=180s
+deployment "kubernetes-bootcamp" successfully rolled out
+
+$ kubectl get pods -l app=kubernetes-bootcamp -o custom-columns=POD:.metadata.name,IMAGE:.spec.containers[0].image,STATUS:.status.phase
+POD                                    IMAGE                    STATUS
+kubernetes-bootcamp-6b9c787c5d-l9qpg   kubernetes-bootcamp:v2   Running
+kubernetes-bootcamp-6b9c787c5d-qdjrr   kubernetes-bootcamp:v2   Running
+
+$ kubectl rollout history deployments/kubernetes-bootcamp
+deployment.apps/kubernetes-bootcamp 
+REVISION  CHANGE-CAUSE
+1         <none>
+3         <none>
+4         <none>
+
+
+# Clean up
+$ kubectl delete service kubernetes-bootcamp && kubectl delete deployment kubernetes-bootcamp
+service "kubernetes-bootcamp" deleted from default namespace
+deployment.apps "kubernetes-bootcamp" deleted from default namespace
+

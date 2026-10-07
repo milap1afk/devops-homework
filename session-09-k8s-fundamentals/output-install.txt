@@ -1,0 +1,23 @@
+# Installed on macOS with Homebrew (Docker engine = Colima):
+$ brew install colima docker kubectl minikube
+$ colima start --cpu 4 --memory 5
+$ minikube start --driver=docker --cpus=3 --memory=3500
+
+$ minikube version
+minikube version: v1.39.0
+commit: 7a9f6a841470a207de8cf4bafcccee0969d8ba10
+
+$ kubectl version --client
+Client Version: v1.37.1
+Kustomize Version: v5.8.1
+
+$ docker version --format "Docker engine {{.Server.Version}} ({{.Server.Os}}/{{.Server.Arch}})"
+Docker engine 29.5.2 (linux/arm64)
+
+$ kubectl config current-context
+minikube
+
+$ kubectl config get-contexts
+CURRENT   NAME       CLUSTER    AUTHINFO   NAMESPACE
+*         minikube   minikube   minikube   default
+

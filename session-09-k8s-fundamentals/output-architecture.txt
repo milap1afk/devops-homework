@@ -1,0 +1,78 @@
+# Control plane components run as static Pods in kube-system:
+$ kubectl get pods -n kube-system -o wide
+NAME                               READY   STATUS    RESTARTS   AGE   IP             NODE       NOMINATED NODE   READINESS GATES
+coredns-559f6c778d-ktpfn           1/1     Running   0          40m   10.244.0.3     minikube   <none>           <none>
+etcd-minikube                      1/1     Running   0          40m   192.168.49.2   minikube   <none>           <none>
+kindnet-vrb7j                      1/1     Running   0          40m   192.168.49.2   minikube   <none>           <none>
+kube-apiserver-minikube            1/1     Running   0          40m   192.168.49.2   minikube   <none>           <none>
+kube-controller-manager-minikube   1/1     Running   0          40m   192.168.49.2   minikube   <none>           <none>
+kube-proxy-9qtnp                   1/1     Running   0          40m   192.168.49.2   minikube   <none>           <none>
+kube-scheduler-minikube            1/1     Running   0          40m   192.168.49.2   minikube   <none>           <none>
+metrics-server-768f9f6999-f8bd5    1/1     Running   0          40m   10.244.0.4     minikube   <none>           <none>
+storage-provisioner                1/1     Running   0          40m   192.168.49.2   minikube   <none>           <none>
+
+$ minikube ssh -- ls /etc/kubernetes/manifests
+etcd.yaml	     kube-controller-manager.yaml
+kube-apiserver.yaml  kube-scheduler.yaml
+
+$ kubectl describe node minikube | sed -n '/^Capacity:/,/^System Info:/p' | head -16
+Capacity:
+  cpu:                4
+  ephemeral-storage:  41954803712
+  hugepages-1Gi:      0
+  hugepages-2Mi:      0
+  hugepages-32Mi:     0
+  hugepages-64Ki:     0
+  memory:             5021984Ki
+  pods:               110
+Allocatable:
+  cpu:                4
+  ephemeral-storage:  41954803712
+  hugepages-1Gi:      0
+  hugepages-2Mi:      0
+  hugepages-32Mi:     0
+  hugepages-64Ki:     0
+
+$ kubectl describe node minikube | sed -n '/^System Info:/,/^PodCIDR/p'
+System Info:
+  Machine ID:                 c7552358bf1aab9f1f21b3de6a971616
+  System UUID:                165afa66-3f91-4a05-8860-142aa78403c2
+  Boot ID:                    687bfed5-4948-4ea9-8f76-8c1c73c92edc
+  Kernel Version:             6.8.0-117-generic
+  OS Image:                   Debian GNU/Linux 12 (bookworm)
+  Operating System:           linux
+  Architecture:               arm64
+  Container Runtime Version:  containerd://2.3.4
+  Kubelet Version:            v1.37.0
+PodCIDR:                      10.244.0.0/24
+
+# Node components: kubelet (systemd service) + container runtime + kube-proxy
+$ minikube ssh -- 'systemctl is-active kubelet; sudo crictl --version; sudo crictl ps --name kube-proxy -q | head -1 | cut -c1-12'
+active
+crictl version v1.35.0
+7fe0cf6f0b64
+
+$ kubectl api-resources --api-group=apps
+NAME                  SHORTNAMES   APIVERSION   NAMESPACED   KIND
+controllerrevisions                apps/v1      true         ControllerRevision
+daemonsets            ds           apps/v1      true         DaemonSet
+deployments           deploy       apps/v1      true         Deployment
+replicasets           rs           apps/v1      true         ReplicaSet
+statefulsets          sts          apps/v1      true         StatefulSet
+
+$ kubectl get --raw /version
+{
+  "major": "1",
+  "minor": "37",
+  "emulationMajor": "1",
+  "emulationMinor": "37",
+  "minCompatibilityMajor": "1",
+  "minCompatibilityMinor": "36",
+  "gitVersion": "v1.37.0",
+  "gitCommit": "f54c212e3a2f75d674b717a9b29052b20b60aefc",
+  "gitTreeState": "clean",
+  "buildDate": "2026-08-26T10:44:25Z",
+  "goVersion": "go1.26.6",
+  "compiler": "gc",
+  "platform": "linux/arm64"
+}
