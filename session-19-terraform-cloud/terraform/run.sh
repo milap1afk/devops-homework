@@ -2,7 +2,7 @@
 # Offline part of the workflow -> output.txt. No AWS account is used and nothing is created.
 cd "$(dirname "$0")"
 run() { echo "\$ $*"; eval "$@" 2>&1; echo; }
-export AWS_ACCESS_KEY_ID=AKIAOFFLINEPLANONLY00 AWS_SECRET_ACCESS_KEY=offline-plan-dummy-secret
+export AWS_ACCESS_KEY_ID=offline-plan-dummy-id AWS_SECRET_ACCESS_KEY=offline-plan-dummy-secret
 export TF_IN_AUTOMATION=1 TF_CLI_ARGS="-no-color" CHECKPOINT_DISABLE=1
 {
 run 'terraform init'

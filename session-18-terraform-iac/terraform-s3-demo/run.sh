@@ -3,7 +3,7 @@
 # No AWS account is used: dummy credentials + skip_* flags let `plan` run without calling AWS.
 cd "$(dirname "$0")"
 run() { echo "\$ $*"; eval "$@" 2>&1; echo; }
-export AWS_ACCESS_KEY_ID=AKIAOFFLINEPLANONLY00 AWS_SECRET_ACCESS_KEY=offline-plan-dummy-secret TF_IN_AUTOMATION=1
+export AWS_ACCESS_KEY_ID=offline-plan-dummy-id AWS_SECRET_ACCESS_KEY=offline-plan-dummy-secret TF_IN_AUTOMATION=1
 export TF_CLI_ARGS="-no-color" CHECKPOINT_DISABLE=1
 {
 run 'terraform version'
