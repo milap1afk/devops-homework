@@ -1,0 +1,31 @@
+# Injects the ConfigMap three ways:
+#  1. one key  -> one env var       (env.valueFrom.configMapKeyRef)
+#  2. all keys -> env vars          (envFrom.configMapRef)
+#  3. as files -> mounted volume    (volumes.configMap)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: configmap-demo
+  namespace: s12
+spec:
+  containers:
+    - name: app
+      image: busybox:1.36
+      command: ["sh", "-c", "sleep 3600"]
+      env:
+        - name: ENVIRONMENT                # renamed single key
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: APP_ENV
+      envFrom:
+        - configMapRef:
+            name: app-config               # every key becomes an env var
+      volumeMounts:
+        - name: config-volume
+          mountPath: /etc/config           # every key becomes a file
+          readOnly: true
+  volumes:
+    - name: config-volume
+      configMap:
+        name: app-config

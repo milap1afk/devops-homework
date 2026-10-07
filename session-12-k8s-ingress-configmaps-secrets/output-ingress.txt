@@ -1,0 +1,84 @@
+$ kubectl get pods -n ingress-nginx
+NAME                                       READY   STATUS      RESTARTS   AGE
+ingress-nginx-admission-create-jx7vc       0/1     Completed   0          55m
+ingress-nginx-admission-patch-nj58k        0/1     Completed   0          55m
+ingress-nginx-controller-d7cd8c989-p6lh8   1/1     Running     0          55m
+
+$ kubectl get ingressclass
+NAME              CONTROLLER             PARAMETERS   AGE
+nginx (default)   k8s.io/ingress-nginx   <none>       55m
+
+# ---- Deploy the applications + Services ----
+$ kubectl apply -f 03-ingress/apps.yaml
+deployment.apps/shop unchanged
+service/shop-svc unchanged
+deployment.apps/blog unchanged
+service/blog-svc unchanged
+
+$ kubectl -n s12 rollout status deploy/shop --timeout=120s && kubectl -n s12 rollout status deploy/blog --timeout=120s
+deployment "shop" successfully rolled out
+deployment "blog" successfully rolled out
+
+$ kubectl -n s12 get deploy,svc
+NAME                   READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/blog   2/2     2            2           36s
+deployment.apps/shop   2/2     2            2           36s
+
+NAME               TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
+service/blog-svc   ClusterIP   10.97.16.253   <none>        80/TCP    36s
+service/shop-svc   ClusterIP   10.97.182.23   <none>        80/TCP    36s
+
+# ---- Configure the Ingress ----
+$ kubectl apply -f 03-ingress/ingress.yaml
+ingress.networking.k8s.io/demo-ingress unchanged
+
+$ kubectl -n s12 get ingress demo-ingress
+NAME           CLASS   HOSTS                            ADDRESS        PORTS   AGE
+demo-ingress   nginx   kirana.local,blog.kirana.local   192.168.49.2   80      35s
+
+$ kubectl -n s12 describe ingress demo-ingress | sed -n '/^Rules:/,/^Annotations:/p'
+Rules:
+  Host               Path  Backends
+  ----               ----  --------
+  kirana.local       
+                     /shop   shop-svc:80 (10.244.0.140:5678,10.244.0.141:5678)
+                     /blog   blog-svc:80 (10.244.0.143:5678,10.244.0.142:5678)
+  blog.kirana.local  
+                     /   blog-svc:80 (10.244.0.143:5678,10.244.0.142:5678)
+Annotations:         nginx.ingress.kubernetes.io/rewrite-target: /
+
+# ---- Access through the Ingress ----
+# (a) from inside the node, straight to the controller on port 80 of the node IP:
+$ minikube ssh -- curl -s --resolve kirana.local:80:192.168.49.2 http://kirana.local/shop
+SHOP service  (pod shop-5dc4997464-qkm6h)
+
+$ minikube ssh -- curl -s --resolve kirana.local:80:192.168.49.2 http://kirana.local/blog
+BLOG service  (pod blog-84d48645c6-fp44f)
+
+$ minikube ssh -- curl -s --resolve blog.kirana.local:80:192.168.49.2 http://blog.kirana.local/
+BLOG service  (pod blog-84d48645c6-v6wlp)
+
+# (b) from the Mac, via a port-forward to the ingress controller Service:
+# --resolve maps the hostname to 127.0.0.1 like an /etc/hosts entry
+$ for p in shop shop blog blog; do curl -s --resolve kirana.local:8085:127.0.0.1 http://kirana.local:8085/$p; done
+SHOP service  (pod shop-5dc4997464-pdt56)
+SHOP service  (pod shop-5dc4997464-pdt56)
+BLOG service  (pod blog-84d48645c6-fp44f)
+BLOG service  (pod blog-84d48645c6-v6wlp)
+
+$ curl -s --resolve blog.kirana.local:8085:127.0.0.1 http://blog.kirana.local:8085/
+BLOG service  (pod blog-84d48645c6-fp44f)
+
+# ---- Verify routing: unknown host / path -> controller's default backend (404) ----
+$ curl -s -o /dev/null -w "HTTP %{http_code}\n" --resolve kirana.local:8085:127.0.0.1 http://kirana.local:8085/unknown
+HTTP 404
+
+$ curl -s -o /dev/null -w "HTTP %{http_code}\n" --resolve other.local:8085:127.0.0.1 http://other.local:8085/shop
+HTTP 404
+
+# ---- Controller logs prove the requests went through ingress-nginx ----
+$ kubectl -n ingress-nginx logs deploy/ingress-nginx-controller --tail=50 | grep -E 's12-(shop|blog)-svc' | tail -3 | sed -E 's/^[0-9.]+ /<client-ip> /'
+<client-ip> - - [07/Oct/2026:06:52:59 +0000] "GET /blog HTTP/1.1" 200 42 "-" "curl/8.7.1" 84 0.002 [s12-blog-svc-80] [] 10.244.0.143:5678 42 0.003 200 dff39c766bd4448a6ce1adfd9028c04c
+<client-ip> - - [07/Oct/2026:06:52:59 +0000] "GET /blog HTTP/1.1" 200 42 "-" "curl/8.7.1" 84 0.000 [s12-blog-svc-80] [] 10.244.0.142:5678 42 0.001 200 8103b32c37f7c5190d4456a99fed5489
+<client-ip> - - [07/Oct/2026:06:52:59 +0000] "GET / HTTP/1.1" 200 42 "-" "curl/8.7.1" 85 0.001 [s12-blog-svc-80] [] 10.244.0.143:5678 42 0.002 200 90779982feea068c1b83cc7a33be5e15
+

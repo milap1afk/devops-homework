@@ -1,0 +1,93 @@
+# ---- Create the ConfigMap (declarative) ----
+$ kubectl apply -f 01-configmap/configmap.yaml
+configmap/app-config created
+
+# ---- (same thing, imperative) ----
+$ kubectl -n s12 create configmap app-config-cli --from-literal=APP_ENV=staging --from-literal=LOG_LEVEL=debug --dry-run=client -o yaml
+apiVersion: v1
+data:
+  APP_ENV: staging
+  LOG_LEVEL: debug
+kind: ConfigMap
+metadata:
+  name: app-config-cli
+  namespace: s12
+
+$ kubectl -n s12 get configmap app-config
+NAME         DATA   AGE
+app-config   5      0s
+
+$ kubectl -n s12 describe configmap app-config
+Name:         app-config
+Namespace:    s12
+Labels:       <none>
+Annotations:  <none>
+
+Data
+====
+APP_COLOR:
+----
+blue
+
+APP_ENV:
+----
+production
+
+LOG_LEVEL:
+----
+info
+
+MAX_CONNECTIONS:
+----
+100
+
+app.properties:
+----
+feature.dark_mode=true
+feature.beta_banner=false
+cache.ttl_seconds=300
+
+
+
+BinaryData
+====
+
+Events:  <none>
+
+# ---- Inject into a Pod ----
+$ kubectl apply -f 01-configmap/pod.yaml
+pod/configmap-demo created
+
+$ kubectl -n s12 wait --for=condition=Ready pod/configmap-demo --timeout=120s
+pod/configmap-demo condition met
+
+# ---- Verify inside the container ----
+$ kubectl -n s12 exec configmap-demo -- sh -c "echo ENVIRONMENT=\$ENVIRONMENT; env | grep -E \"^(APP_|LOG_|MAX_)\" | sort"
+ENVIRONMENT=production
+APP_COLOR=blue
+APP_ENV=production
+LOG_LEVEL=info
+MAX_CONNECTIONS=100
+
+$ kubectl -n s12 exec configmap-demo -- ls -l /etc/config
+total 0
+lrwxrwxrwx    1 root     root            16 Oct  7 06:50 APP_COLOR -> ..data/APP_COLOR
+lrwxrwxrwx    1 root     root            14 Oct  7 06:50 APP_ENV -> ..data/APP_ENV
+lrwxrwxrwx    1 root     root            16 Oct  7 06:50 LOG_LEVEL -> ..data/LOG_LEVEL
+lrwxrwxrwx    1 root     root            22 Oct  7 06:50 MAX_CONNECTIONS -> ..data/MAX_CONNECTIONS
+lrwxrwxrwx    1 root     root            21 Oct  7 06:50 app.properties -> ..data/app.properties
+
+$ kubectl -n s12 exec configmap-demo -- cat /etc/config/app.properties
+feature.dark_mode=true
+feature.beta_banner=false
+cache.ttl_seconds=300
+
+# ---- Update the ConfigMap: mounted FILES refresh automatically, ENV VARS do not ----
+$ kubectl -n s12 patch configmap app-config --type merge -p '{"data":{"APP_COLOR":"green"}}'
+configmap/app-config patched
+
+# waiting for kubelet to sync the volume (up to ~60s)...
+$ kubectl -n s12 exec configmap-demo -- sh -c "echo file: \$(cat /etc/config/APP_COLOR)   env: \$APP_COLOR"
+file: green env: blue
+
+# env vars are read only at container start -> restart the Pod (or rollout restart a Deployment) to pick them up
