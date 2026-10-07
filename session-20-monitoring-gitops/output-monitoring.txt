@@ -1,0 +1,117 @@
+# ################ Monitoring stack (kube-prometheus-stack via Helm) ################
+$ helm list -n monitoring
+NAME      	NAMESPACE 	REVISION	UPDATED                             	STATUS  	CHART                       	APP VERSION
+monitoring	monitoring	1       	2026-10-07 13:24:26.085104 +0530 IST	deployed	kube-prometheus-stack-92.0.0	v0.94.1    
+
+$ kubectl -n monitoring get pods
+NAME                                                     READY   STATUS    RESTARTS   AGE
+alertmanager-monitoring-kube-prometheus-alertmanager-0   2/2     Running   0          9m22s
+monitoring-grafana-7445f5d8d7-xt26z                      3/3     Running   0          9m24s
+monitoring-kube-prometheus-operator-54fc4b65f8-vqmbw     1/1     Running   0          9m24s
+monitoring-kube-state-metrics-56fd7994f4-h4gpw           1/1     Running   0          9m24s
+monitoring-prometheus-node-exporter-zmj9s                1/1     Running   0          9m24s
+prometheus-monitoring-kube-prometheus-prometheus-0       2/2     Running   0          9m21s
+
+$ kubectl -n podinfo get servicemonitor,prometheusrule
+NAME                                           AGE
+servicemonitor.monitoring.coreos.com/podinfo   4m44s
+
+NAME                                                  AGE
+prometheusrule.monitoring.coreos.com/podinfo-alerts   4m43s
+
+# ################ Metrics: Prometheus discovered podinfo via the ServiceMonitor ################
+$ python3 monitoring/promq.py targets podinfo     # GET /api/v1/targets
+  job=podinfo  http://10.244.0.27:9898/metrics  health=up  lastScrape=2026-10-07T08:03:54
+  job=podinfo  http://10.244.0.28:9898/metrics  health=up  lastScrape=2026-10-07T08:03:48
+  job=podinfo  http://10.244.0.29:9898/metrics  health=up  lastScrape=2026-10-07T08:03:56
+
+# generate some traffic so request metrics move
+# ################ Metric queries (PromQL) ################
+$ up{job="podinfo"}                                   # 1 = scrape target healthy
+  {instance=10.244.0.28:9898,job=podinfo,namespace=podinfo,pod=podinfo-7d77d789f-pcb95}  1.0
+  {instance=10.244.0.27:9898,job=podinfo,namespace=podinfo,pod=podinfo-7d77d789f-2ztlg}  1.0
+  {instance=10.244.0.29:9898,job=podinfo,namespace=podinfo,pod=podinfo-7d77d789f-rqjpl}  1.0
+
+$ sum(rate(http_requests_total{job="podinfo"}[1m])) by (status)   # requests/s by HTTP status
+  status 200 -> 9.4 req/s
+  status 500 -> 8.29 req/s
+
+# CPU utilisation (cores) per pod:
+$ sum(rate(container_cpu_usage_seconds_total{namespace="podinfo",container="podinfo"}[2m])) by (pod)
+  {pod=podinfo-7d77d789f-pcb95}  0.004
+  {pod=podinfo-7d77d789f-2ztlg}  0.0053
+  {pod=podinfo-7d77d789f-rqjpl}  0.0045
+
+# Memory utilisation (bytes) per pod:
+$ sum(container_memory_working_set_bytes{namespace="podinfo",container="podinfo"}) by (pod)
+  {pod=podinfo-7d77d789f-pcb95}  18620416.0
+  {pod=podinfo-7d77d789f-2ztlg}  19087360.0
+  {pod=podinfo-7d77d789f-rqjpl}  18608128.0
+
+# Node CPU / memory used (%):
+$ 100 * (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[2m])))
+  {}  20.7412
+
+$ 100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
+  {instance=192.168.49.2:9100,job=node-exporter,namespace=monitoring,pod=monitoring-prometheus-node-exporter-zmj9s}  65.1826
+
+# Application health (kube-state-metrics):
+$ kube_deployment_status_replicas_available{namespace="podinfo"}
+  {deployment=podinfo,instance=10.244.0.7:8080,job=kube-state-metrics,namespace=podinfo,pod=monitoring-kube-state-metrics-56fd7994f4-h4gpw}  3.0
+
+# ################ Logs ################
+$ kubectl -n podinfo logs deploy/podinfo --tail=3 | cut -c1-200
+Found 3 pods, using pod/podinfo-7d77d789f-2ztlg
+{"level":"info","ts":"2026-10-07T08:02:59.035Z","caller":"podinfo/main.go:170","msg":"Starting podinfo","version":"6.15.0","revision":"dd507173b7b75b2312a36cabe0de5f09c1ce69c8","port":"9898"}
+{"level":"info","ts":"2026-10-07T08:02:59.037Z","caller":"http/server.go:273","msg":"Starting HTTP Server.","addr":":9898"}
+
+$ kubectl -n podinfo logs -l app=podinfo --prefix --tail=2 | cut -c1-200
+[pod/podinfo-7d77d789f-2ztlg/podinfo] {"level":"info","ts":"2026-10-07T08:02:59.035Z","caller":"podinfo/main.go:170","msg":"Starting podinfo","version":"6.15.0","revision":"dd507173b7b75b2312a36cabe0d
+[pod/podinfo-7d77d789f-2ztlg/podinfo] {"level":"info","ts":"2026-10-07T08:02:59.037Z","caller":"http/server.go:273","msg":"Starting HTTP Server.","addr":":9898"}
+[pod/podinfo-7d77d789f-pcb95/podinfo] {"level":"info","ts":"2026-10-07T08:02:59.020Z","caller":"podinfo/main.go:170","msg":"Starting podinfo","version":"6.15.0","revision":"dd507173b7b75b2312a36cabe0d
+[pod/podinfo-7d77d789f-pcb95/podinfo] {"level":"info","ts":"2026-10-07T08:02:59.021Z","caller":"http/server.go:273","msg":"Starting HTTP Server.","addr":":9898"}
+[pod/podinfo-7d77d789f-rqjpl/podinfo] {"level":"info","ts":"2026-10-07T08:02:58.981Z","caller":"podinfo/main.go:170","msg":"Starting podinfo","version":"6.15.0","revision":"dd507173b7b75b2312a36cabe0d
+[pod/podinfo-7d77d789f-rqjpl/podinfo] {"level":"info","ts":"2026-10-07T08:02:58.985Z","caller":"http/server.go:273","msg":"Starting HTTP Server.","addr":":9898"}
+
+# ################ Alerts ################
+$ kubectl -n podinfo get prometheusrule podinfo-alerts -o jsonpath="{range .spec.groups[0].rules[*]}{.alert}: {.expr}{\"\\n\"}{end}"
+PodinfoDown: sum(up{job="podinfo"}) == 0 or absent(up{job="podinfo"})
+PodinfoHighCPU: sum(rate(container_cpu_usage_seconds_total{namespace="podinfo", container="podinfo"}[2m])) by (pod) > 0.15
+PodinfoHighMemory: max(container_memory_working_set_bytes{namespace="podinfo", container="podinfo"}) by (pod) > 100 * 1024 * 1024
+
+$ curl -s http://localhost:9090/api/v1/rules?type=alert | python3 -c 'import json,sys; [print(" ", r["name"], "->", r["state"]) for g in json.load(sys.stdin)["data"]["groups"] if g["name"]=="podinfo.rules" for r in g["rules"]]'
+  PodinfoDown -> inactive
+  PodinfoHighCPU -> inactive
+  PodinfoHighMemory -> inactive
+
+# Simulate an outage: pause Argo CD self-heal, scale podinfo to 0
+$ kubectl -n argocd patch application podinfo --type merge -p '{"spec":{"syncPolicy":{"automated":{"selfHeal":false}}}}'
+application.argoproj.io/podinfo patched
+
+$ kubectl -n podinfo scale deploy podinfo --replicas=0
+deployment.apps/podinfo scaled
+
+ t+5s PodinfoDown: inactive
+ t+40s PodinfoDown: pending
+ t+85s PodinfoDown: firing
+
+$ curl -s http://localhost:9090/api/v1/alerts | python3 -c 'import json,sys; [print(" ", a["labels"]["alertname"], a["labels"].get("severity"), a["state"], "since", a["activeAt"][:19], "-", a["annotations"]["summary"]) for a in json.load(sys.stdin)["data"]["alerts"] if a["labels"]["alertname"].startswith("Podinfo")]'
+  PodinfoDown critical firing since 2026-10-07T08:05:47 - podinfo has no healthy replicas
+
+# Alertmanager received it (this is what would page someone via Slack/email/PagerDuty):
+$ curl -s http://localhost:9093/api/v2/alerts | python3 -c 'import json,sys; [print(" ", a["labels"]["alertname"], a["labels"].get("severity"), a["status"]["state"], a["startsAt"][:19]) for a in json.load(sys.stdin) if a["labels"]["alertname"]=="PodinfoDown"]'
+  PodinfoDown critical active 2026-10-07T08:06:17
+
+# Recover: turn self-heal back on -> Argo CD restores replicas from Git -> alert resolves
+$ kubectl -n argocd patch application podinfo --type merge -p '{"spec":{"syncPolicy":{"automated":{"selfHeal":true}}}}'
+application.argoproj.io/podinfo patched
+
+$ kubectl -n podinfo get deploy podinfo
+NAME      READY   UP-TO-DATE   AVAILABLE   AGE
+podinfo   3/3     3            3           7m51s
+
+$ curl -s http://localhost:9090/api/v1/rules?type=alert | python3 -c 'import json,sys; [print(" ", r["name"], "->", r["state"]) for g in json.load(sys.stdin)["data"]["groups"] if g["name"]=="podinfo.rules" for r in g["rules"]]'
+  PodinfoDown -> inactive
+  PodinfoHighCPU -> inactive
+  PodinfoHighMemory -> inactive
+

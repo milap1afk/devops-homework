@@ -1,0 +1,110 @@
+# ################ 1. Argo CD is installed ################
+$ kubectl -n argocd get pods
+NAME                                                READY   STATUS    RESTARTS   AGE
+argocd-application-controller-0                     1/1     Running   0          3m29s
+argocd-applicationset-controller-76fd8cdd4f-kk67j   1/1     Running   0          3m31s
+argocd-dex-server-66c78cf887-pgj5v                  1/1     Running   0          3m31s
+argocd-notifications-controller-7fb9868fd6-v8z6h    1/1     Running   0          3m31s
+argocd-redis-bdbdffcb4-wnfv9                        1/1     Running   0          3m31s
+argocd-repo-server-d89c7967d-nmwdg                  1/1     Running   0          3m29s
+argocd-server-776b7cdd4d-z6sf4                      1/1     Running   0          3m29s
+
+# ################ 2. Register the app: Git repo path -> cluster namespace ################
+$ cat gitops/argocd-application.yaml
+# Argo CD Application: Git (this repo) is the source of truth for namespace "podinfo"
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: podinfo
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/milap1afk/devops-homework.git
+    targetRevision: main
+    path: session-20-monitoring-gitops/gitops/podinfo
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: podinfo
+  syncPolicy:
+    automated:
+      prune: true      # delete resources that were removed from Git
+      selfHeal: true   # undo manual changes made directly in the cluster (drift)
+    syncOptions:
+      - CreateNamespace=true
+
+$ kubectl apply -f gitops/argocd-application.yaml
+application.argoproj.io/podinfo created
+
+$ kubectl -n argocd get application podinfo
+NAME      SYNC STATUS   HEALTH STATUS
+podinfo   Synced        Healthy
+
+$ kubectl -n argocd get application podinfo -o jsonpath='{range .status.resources[*]}{.kind}/{.name}  {.status}  {.health.status}{"\n"}{end}'
+Service/podinfo  Synced  
+Deployment/podinfo  Synced  
+PrometheusRule/podinfo-alerts  Synced  
+ServiceMonitor/podinfo  Synced  
+
+$ kubectl -n podinfo get deploy,svc,pods
+NAME                      READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/podinfo   2/2     2            2           19s
+
+NAME              TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+service/podinfo   ClusterIP   10.109.57.129   <none>        9898/TCP   19s
+
+NAME                           READY   STATUS    RESTARTS   AGE
+pod/podinfo-574b75c466-fsw2w   1/1     Running   0          19s
+pod/podinfo-574b75c466-pklfz   1/1     Running   0          19s
+
+$ kubectl -n podinfo exec deploy/podinfo -- wget -qO- localhost:9898 | grep -E '"(hostname|version|message)"'
+  "hostname": "podinfo-574b75c466-fsw2w",
+  "version": "6.15.0",
+  "message": "Deployed by Argo CD from Git",
+
+# ################ 3. Change desired state IN GIT (replicas 2 -> 3, new message) ################
+$ sed -i '' -e 's/replicas: 2/replicas: 3/' -e 's/Deployed by Argo CD from Git/Updated through a Git commit/' gitops/podinfo/deployment.yaml && git -C .. diff --stat
+ session-20-monitoring-gitops/gitops/podinfo/deployment.yaml | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+$ git -C .. commit -qam 'Session 20 GitOps demo: scale podinfo to 3 and change message' && git -C .. push -q origin main && git -C .. log --oneline -1
+df692b5 Session 20 GitOps demo: scale podinfo to 3 and change message
+
+# No kubectl apply. Argo CD notices the new commit (polls every ~3 min; a refresh is requested here to avoid waiting):
+$ kubectl -n argocd get application podinfo
+NAME      SYNC STATUS   HEALTH STATUS
+podinfo   Synced        Healthy
+
+$ kubectl -n podinfo get deploy podinfo
+NAME      READY   UP-TO-DATE   AVAILABLE   AGE
+podinfo   3/3     3            3           38s
+
+$ kubectl -n podinfo exec deploy/podinfo -- wget -qO- localhost:9898 | grep '"message"'
+  "message": "Updated through a Git commit",
+
+$ kubectl -n argocd get application podinfo -o jsonpath='{range .status.history[*]}{.id}  {.revision}  {.deployedAt}{"\n"}{end}' | cut -c1-80
+0  9b42d5fa5afafb6c8cd3fe75553b3d9bab4ca859  2026-10-07T07:59:14Z
+1  df692b59af751cb18afd0f138c90a236a0362e9e  2026-10-07T07:59:38Z
+
+# ################ 4. Drift: someone changes the cluster by hand ################
+$ kubectl -n podinfo scale deploy podinfo --replicas=5
+deployment.apps/podinfo scaled
+
+$ kubectl -n podinfo get deploy podinfo
+NAME      READY   UP-TO-DATE   AVAILABLE   AGE
+podinfo   3/5     3            3           38s
+
+# selfHeal: Argo CD compares live state with Git and reverts the manual change:
+$ kubectl -n podinfo get deploy podinfo
+NAME      READY   UP-TO-DATE   AVAILABLE   AGE
+podinfo   3/3     3            3           43s
+
+$ kubectl -n argocd get application podinfo -o jsonpath='{.status.operationState.message}{"\n"}{.status.operationState.syncResult.revision}{"\n"}' | cut -c1-80
+successfully synced (all tasks run)
+df692b59af751cb18afd0f138c90a236a0362e9e
+
+$ kubectl -n argocd logs statefulset/argocd-application-controller --tail=400 | grep -iE 'podinfo' | grep -iE 'selfheal|self-heal|OutOfSync|Initiated automated sync' | tail -3 | cut -c1-230
+{"application":"podinfo","dest-namespace":"podinfo","dest-server":"https://kubernetes.default.svc","level":"info","msg":"Updated sync status: Synced -\u003e OutOfSync","reason":"ResourceUpdated","time":"2026-10-07T07:59:52Z","type
+{"app-namespace":"argocd","application":"podinfo","level":"info","msg":"Initialized new operation: {\u0026SyncOperation{Revision:df692b59af751cb18afd0f138c90a236a0362e9e,Prune:true,DryRun:false,SyncStrategy:nil,Resources:[]SyncOpe
+{"application":"podinfo","dest-namespace":"podinfo","dest-server":"https://kubernetes.default.svc","level":"info","msg":"Updated sync status: OutOfSync -\u003e Synced","reason":"ResourceUpdated","time":"2026-10-07T07:59:56Z","type
+
