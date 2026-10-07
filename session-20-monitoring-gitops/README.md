@@ -127,7 +127,7 @@ They connect: an alert on a **metric** → find the slow **trace** → read the 
 - Microservices and Kubernetes are **distributed and short-lived**: Pods move, scale and die, so you can't SSH in and look around.
 - Failures are **new and partial** (one dependency slow, one AZ degraded), and predefined dashboards can't anticipate all of them.
 - It cuts **MTTR** (mean time to recovery), makes **SLOs** and error budgets measurable, and is the evidence for capacity planning, cost and post-mortems.
-- It turns "it's slow" into "p99 latency of `/checkout` rose from 200ms to 1.1s after release `df692b5`, caused by the payments DB pool".
+- It turns "it's slow" into "p99 latency of `/checkout` rose from 200ms to 1.1s after release `855b4e2`, caused by the payments DB pool".
 
 ### Kubernetes observability
 
@@ -188,11 +188,11 @@ deployment.apps/podinfo   2/2     "message": "Deployed by Argo CD from Git"
 ```
 
 **2. Change through Git only.** I edited `deployment.yaml` (`replicas: 2 → 3`, new UI message), then committed and pushed
-([`df692b5`](https://github.com/milap1afk/devops-homework/commit/df692b59af751cb18afd0f138c90a236a0362e9e)). **No `kubectl apply`.**
+([`855b4e2`](https://github.com/milap1afk/devops-homework/commit/855b4e2124de116c656bc8541495fd7281b2673d)). **No `kubectl apply`.**
 ```text
 podinfo   3/3     "message": "Updated through a Git commit"
-sync history:  0  9b42d5fa…  2026-10-07T07:59:14Z
-               1  df692b59…  2026-10-07T07:59:38Z
+sync history:  0  7a1f99f9…  2026-10-07T07:59:14Z
+               1  855b4e21…  2026-10-07T07:59:38Z
 ```
 
 **3. Drift + self-heal.** I scaled by hand with `kubectl scale --replicas=5`, and Argo CD put it back to the Git value **within about 4 seconds**:
@@ -200,7 +200,7 @@ sync history:  0  9b42d5fa…  2026-10-07T07:59:14Z
 podinfo   3/5     ← manual change
 podinfo   3/3     ← reverted to Git
 controller log: "Updated sync status: Synced -> OutOfSync"  07:59:52
-                "Initialized new operation: SyncOperation{Revision:df692b59…}"
+                "Initialized new operation: SyncOperation{Revision:855b4e21…}"
                 "Updated sync status: OutOfSync -> Synced"  07:59:56
 ```
 
