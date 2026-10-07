@@ -59,3 +59,10 @@ def test_metrics_exposed(client):
     text = client.get("/metrics").get_data(as_text=True)
     assert "kirana_http_requests_total" in text
     assert "kirana_http_request_duration_seconds_bucket" in text
+
+
+def test_boots_while_database_is_down():
+    """Liveness must not depend on the DB; readiness reports 503 until the DB is reachable."""
+    c = create_app("postgresql://kirana:x@db-that-does-not-exist:5432/ledger").test_client()
+    assert c.get("/health").status_code == 200
+    assert c.get("/ready").status_code == 503

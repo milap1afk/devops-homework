@@ -1,0 +1,5 @@
+################ GitOps release of 1.0.1 (fix: app boots while DB is down) ################
+$ sed -i '' 's/tag: "1.0.0"/tag: "1.0.1"/' final-devops-project/helm/kirana/values-minikube.yaml && grep 'tag:' final-devops-project/helm/kirana/values-minikube.yaml
+  tag: "1.0.1"
+
+$ git -C .. add -A && git -C .. commit -qm 'Session 21: release 1.0.1 - lazy DB schema so the API boots before PostgreSQL' && git -C .. push -q origin main && git -C .. log --oneline -1

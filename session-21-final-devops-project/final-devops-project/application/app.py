@@ -37,14 +37,17 @@ class Store:
         self.pg = url.startswith("postgresql://")
         self.ph = "%s" if self.pg else "?"
         self._memory = None
-        with self.connect() as conn:
-            cur = conn.cursor()
-            cur.execute(
+        self._schema_ready = False  # created lazily: the app must boot even while the DB is still starting
+
+    def _ensure_schema(self, conn):
+        if not self._schema_ready:
+            conn.cursor().execute(
                 "CREATE TABLE IF NOT EXISTS entries ("
                 + ("id SERIAL PRIMARY KEY, " if self.pg else "id INTEGER PRIMARY KEY AUTOINCREMENT, ")
                 + "customer TEXT NOT NULL, amount REAL NOT NULL, type TEXT NOT NULL)"
             )
             conn.commit()
+            self._schema_ready = True
 
     def connect(self):
         if self.pg:
@@ -60,6 +63,7 @@ class Store:
 
     def add(self, customer, amount, entry_type):
         with self.connect() as conn:
+            self._ensure_schema(conn)
             conn.cursor().execute(
                 f"INSERT INTO entries (customer, amount, type) VALUES ({self.ph}, {self.ph}, {self.ph})",
                 (customer, amount, entry_type),
@@ -68,12 +72,14 @@ class Store:
 
     def all(self):
         with self.connect() as conn:
+            self._ensure_schema(conn)
             cur = conn.cursor()
             cur.execute("SELECT customer, amount, type FROM entries ORDER BY id")
             return [{"customer": c, "amount": a, "type": t} for c, a, t in cur.fetchall()]
 
     def balance(self, customer):
         with self.connect() as conn:
+            self._ensure_schema(conn)
             cur = conn.cursor()
             cur.execute(
                 "SELECT COALESCE(SUM(CASE type WHEN 'udhar' THEN amount WHEN 'payment' THEN -amount ELSE 0 END), 0)"
@@ -84,7 +90,7 @@ class Store:
 
     def ping(self):
         with self.connect() as conn:
-            conn.cursor().execute("SELECT 1")
+            self._ensure_schema(conn)
 
 
 class _NoClose:

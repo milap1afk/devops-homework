@@ -6,7 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/name: kirana
     app.kubernetes.io/instance: kirana
-    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/version: "1.0.1"
     app.kubernetes.io/managed-by: Helm
     helm.sh/chart: kirana-1.0.0
     app.kubernetes.io/component: api
@@ -20,7 +20,7 @@ spec:
       labels:
         app.kubernetes.io/name: kirana
         app.kubernetes.io/instance: kirana
-        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/version: "1.0.1"
         app.kubernetes.io/managed-by: Helm
         helm.sh/chart: kirana-1.0.0
         app.kubernetes.io/component: api
@@ -34,7 +34,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: api
-          image: "ghcr.io/milap1afk/kirana-final:1.0.0"
+          image: "ghcr.io/milap1afk/kirana-final:1.0.1"
           imagePullPolicy: Never
           ports:
             - { name: http, containerPort: 8000 }
@@ -48,7 +48,7 @@ spec:
             - name: DATABASE_URL
               value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):5432/$(POSTGRES_DB)"
             - name: APP_VERSION
-              value: "1.0.0"
+              value: "1.0.1"
           startupProbe:
             httpGet: { path: /health, port: http }
             failureThreshold: 30

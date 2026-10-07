@@ -1,7 +1,7 @@
 # Values used by Argo CD (gitops/argocd-application.yaml) on the local minikube cluster
 image:
   repository: ghcr.io/milap1afk/kirana-final
-  tag: "1.0.0"
+  tag: "1.0.1"
   pullPolicy: Never          # image is built locally and loaded with `minikube image load`
 
 secrets:
