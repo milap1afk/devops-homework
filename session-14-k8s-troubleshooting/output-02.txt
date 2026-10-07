@@ -1,0 +1,47 @@
+# ======== PROBLEM: catalog Pod stuck, never starts ========
+$ kubectl apply -f scenarios/02-imagepullbackoff/broken.yaml
+deployment.apps/catalog created
+
+# 1. IDENTIFY
+$ kubectl -n s14 get pods -l app=catalog
+NAME                       READY   STATUS             RESTARTS   AGE
+catalog-78d98dbd7c-k4wz6   0/1     ImagePullBackOff   0          15s
+
+# 2. INVESTIGATE
+$ kubectl -n s14 events --for pod/catalog-78d98dbd7c-k4wz6 | tail -6
+15s                Normal    Scheduled   Pod/catalog-78d98dbd7c-k4wz6   Successfully assigned s14/catalog-78d98dbd7c-k4wz6 to minikube
+13s                Normal    BackOff     Pod/catalog-78d98dbd7c-k4wz6   Back-off pulling image "docker.io/milap1afk/kirana-catalog-private:1.0"
+13s                Warning   Failed      Pod/catalog-78d98dbd7c-k4wz6   Error: ImagePullBackOff
+1s (x2 over 15s)   Normal    Pulling     Pod/catalog-78d98dbd7c-k4wz6   Pulling image "docker.io/milap1afk/kirana-catalog-private:1.0"
+0s (x2 over 14s)   Warning   Failed      Pod/catalog-78d98dbd7c-k4wz6   Failed to pull image "docker.io/milap1afk/kirana-catalog-private:1.0": failed to pull and unpack image "docker.io/milap1afk/kirana-catalog-private:1.0": failed to resolve reference "docker.io/milap1afk/kirana-catalog-private:1.0": pull access denied, repository does not exist or may require authorization: server message: insufficient_scope: authorization failed
+0s (x2 over 14s)   Warning   Failed      Pod/catalog-78d98dbd7c-k4wz6   Error: ErrImagePull
+
+$ kubectl -n s14 get pod catalog-78d98dbd7c-k4wz6 -o jsonpath='{.spec.containers[0].image}{"\n"}{.status.containerStatuses[0].state.waiting.message}{"\n"}' | cut -c1-220
+docker.io/milap1afk/kirana-catalog-private:1.0
+Back-off pulling image "docker.io/milap1afk/kirana-catalog-private:1.0": ErrImagePull: failed to pull and unpack image "docker.io/milap1afk/kirana-catalog-private:1.0": failed to resolve reference "docker.io/milap1afk/ki
+
+$ docker manifest inspect docker.io/milap1afk/kirana-catalog-private:1.0 2>&1 | head -2
+errors:
+denied: requested access to the resource is denied
+
+# 3. ROOT CAUSE: the image repository does not exist (or is private without imagePullSecrets) -> pull fails -> kubelet backs off: ImagePullBackOff
+# 4. FIX: point to an image that exists (for a private registry: create a docker-registry Secret and add imagePullSecrets)
+$ diff scenarios/02-imagepullbackoff/broken.yaml scenarios/02-imagepullbackoff/fixed.yaml
+12c12
+<           image: docker.io/milap1afk/kirana-catalog-private:1.0   # repo does not exist / is private
+---
+>           image: nginx:1.27-alpine
+
+$ kubectl apply -f scenarios/02-imagepullbackoff/fixed.yaml && kubectl -n s14 rollout status deploy/catalog --timeout=120s
+deployment.apps/catalog configured
+Waiting for deployment "catalog" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "catalog" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "catalog" rollout to finish: 1 old replicas are pending termination...
+deployment "catalog" successfully rolled out
+
+# 5. VERIFY
+$ kubectl -n s14 get pods -l app=catalog
+NAME                       READY   STATUS        RESTARTS   AGE
+catalog-78d98dbd7c-k4wz6   0/1     Terminating   0          21s
+catalog-79779c6f6-skjbr    1/1     Running       0          1s
+

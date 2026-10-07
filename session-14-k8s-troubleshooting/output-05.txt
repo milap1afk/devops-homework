@@ -1,0 +1,35 @@
+# ======== PROBLEM: billing Pod stuck in ContainerCreating ========
+$ kubectl apply -f scenarios/05-containercreating/broken.yaml
+pod/billing created
+
+# 1. IDENTIFY
+$ kubectl -n s14 get pod billing
+NAME      READY   STATUS              RESTARTS   AGE
+billing   0/1     ContainerCreating   0          16s
+
+# 2. INVESTIGATE
+$ kubectl -n s14 events --for pod/billing | tail -6
+LAST SEEN          TYPE      REASON        OBJECT        MESSAGE
+16s                Normal    Scheduled     Pod/billing   Successfully assigned s14/billing to minikube
+8s (x5 over 15s)   Warning   FailedMount   Pod/billing   MountVolume.SetUp failed for volume "cfg" : configmap "billing-config" not found
+
+$ kubectl -n s14 get configmap billing-config
+Error from server (NotFound): configmaps "billing-config" not found
+
+# 3. ROOT CAUSE: the Pod mounts ConfigMap billing-config, which does not exist -> kubelet cannot set up the volume (FailedMount) -> container is never created
+# 4. FIX: create the ConfigMap (the kubelet retries the mount automatically)
+$ kubectl apply -f scenarios/05-containercreating/fixed.yaml
+configmap/billing-config created
+pod/billing configured
+
+$ kubectl -n s14 wait --for=condition=Ready pod/billing --timeout=180s
+pod/billing condition met
+
+# 5. VERIFY
+$ kubectl -n s14 get pod billing
+NAME      READY   STATUS    RESTARTS   AGE
+billing   1/1     Running   0          17s
+
+$ kubectl -n s14 exec billing -- cat /etc/billing/tax_rate; echo
+0.18
+

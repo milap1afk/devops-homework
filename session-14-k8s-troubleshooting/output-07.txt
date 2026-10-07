@@ -1,0 +1,55 @@
+# ======== PROBLEM: storefront logs 'ERROR calling http://inventory' ========
+$ kubectl apply -f scenarios/07-dns/broken.yaml
+namespace/s14-backend created
+deployment.apps/inventory created
+service/inventory created
+pod/storefront created
+
+# 1. IDENTIFY
+$ kubectl -n s14 logs storefront --tail=2
+ERROR calling http://inventory
+ERROR calling http://inventory
+
+# 2. INVESTIGATE
+$ kubectl -n s14 exec netshoot -- nslookup inventory 2>&1 | tail -3
+** server can't find inventory: NXDOMAIN
+
+command terminated with exit code 1
+
+$ kubectl -n s14 exec netshoot -- cat /etc/resolv.conf
+search s14.svc.cluster.local svc.cluster.local cluster.local
+nameserver 10.96.0.10
+options ndots:5
+
+$ kubectl get svc -A | grep -E "NAMESPACE|inventory"
+NAMESPACE       NAME                                 TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)                      AGE
+s14-backend     inventory                            ClusterIP   10.107.69.249    <none>        80/TCP                       9s
+
+$ kubectl -n s14 exec netshoot -- nslookup inventory.s14-backend.svc.cluster.local | tail -2
+Address: 10.107.69.249
+
+
+$ kubectl -n kube-system get pods -l k8s-app=kube-dns
+NAME                       READY   STATUS    RESTARTS   AGE
+coredns-559f6c778d-ktpfn   1/1     Running   0          103m
+
+# 3. ROOT CAUSE: the Service is in namespace s14-backend; the short name 'inventory' is expanded with the CLIENT's namespace (inventory.s14.svc.cluster.local) -> NXDOMAIN. CoreDNS itself is healthy.
+# 4. FIX: use the FQDN inventory.s14-backend.svc.cluster.local (Pod env cannot be edited in place -> recreate)
+$ diff scenarios/07-dns/broken.yaml scenarios/07-dns/fixed.yaml
+35c35
+<         - { name: INVENTORY_URL, value: "http://inventory" }     # short name only resolves in the SAME namespace
+---
+>         - { name: INVENTORY_URL, value: "http://inventory.s14-backend.svc.cluster.local" }
+
+$ kubectl -n s14 delete pod storefront --wait && kubectl apply -f scenarios/07-dns/fixed.yaml
+pod "storefront" deleted from s14 namespace
+namespace/s14-backend unchanged
+deployment.apps/inventory unchanged
+service/inventory unchanged
+pod/storefront created
+
+# 5. VERIFY
+$ kubectl -n s14 logs storefront --tail=2
+inventory OK
+inventory OK
+

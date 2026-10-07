@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: reports, namespace: s14 }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: reports } }
+  template:
+    metadata: { labels: { app: reports } }
+    spec:
+      nodeSelector:
+        disktype: ssd              # no node has this label
+      containers:
+        - name: reports
+          image: nginx:1.27-alpine
+          resources:
+            requests: { memory: 32Gi }   # more than the node has

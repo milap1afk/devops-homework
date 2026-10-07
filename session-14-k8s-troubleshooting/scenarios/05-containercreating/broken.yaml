@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Pod
+metadata: { name: billing, namespace: s14 }
+spec:
+  containers:
+    - name: billing
+      image: nginx:1.27-alpine
+      volumeMounts: [{ name: cfg, mountPath: /etc/billing }]
+  volumes:
+    - name: cfg
+      configMap: { name: billing-config }   # this ConfigMap was never created

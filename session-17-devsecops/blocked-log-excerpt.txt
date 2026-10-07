@@ -1,0 +1,14 @@
+[3. SCA (npm audit + Trivy fs) / npm audit (production dependencies, fail on high+)] lodash  <=4.17.23
+[3. SCA (npm audit + Trivy fs) / npm audit (production dependencies, fail on high+)] Severity: critical
+[3. SCA (npm audit + Trivy fs) / npm audit (production dependencies, fail on high+)] Prototype Pollution in lodash - https://github.com/advisories/GHSA-fvqr-27wr-82fm
+[3. SCA (npm audit + Trivy fs) / npm audit (production dependencies, fail on high+)] Command Injection in lodash - https://github.com/advisories/GHSA-35jh-r3h4-6jhm
+[3. SCA (npm audit + Trivy fs) / npm audit (production dependencies, fail on high+)] Prototype Pollution in lodash - https://github.com/advisories/GHSA-4xc9-xhrj-v574
+[3. SCA (npm audit + Trivy fs) / npm audit (production dependencies, fail on high+)] Prototype Pollution in lodash - https://github.com/advisories/GHSA-jf85-cpcp-j695
+[3. SCA (npm audit + Trivy fs) / npm audit (production dependencies, fail on high+)] Prototype Pollution in lodash - https://github.com/advisories/GHSA-p6mc-m468-83gw
+[3. SCA (npm audit + Trivy fs) / npm audit (production dependencies, fail on high+)] Regular Expression Denial of Service (ReDoS) in lodash - https://github.com/advisories/GHSA-29mw-wpgm-hmr9
+[3. SCA (npm audit + Trivy fs) / npm audit (production dependencies, fail on high+)] Regular Expression Denial of Service (ReDoS) in lodash - https://github.com/advisories/GHSA-x5rq-j2xg-h7qm
+[3. SCA (npm audit + Trivy fs) / npm audit (production dependencies, fail on high+)] lodash vulnerable to Code Injection via `_.template` imports key names - https://github.com/advisories/GHSA-r5fr-rjxr-66jc
+[3. SCA (npm audit + Trivy fs) / npm audit (production dependencies, fail on high+)] lodash vulnerable to Prototype Pollution via array path bypass in `_.unset` and `_.omit` - https://github.com/advisories/GHSA-f23m-r3pf-42rh
+[3. SCA (npm audit + Trivy fs) / npm audit (production dependencies, fail on high+)] node_modules/lodash
+[3. SCA (npm audit + Trivy fs) / npm audit (production dependencies, fail on high+)] 1 critical severity vulnerability
+[3. SCA (npm audit + Trivy fs) / Trivy filesystem scan of dependencies (fail on fixable HIGH/CRITICAL)] (trivy run finished)

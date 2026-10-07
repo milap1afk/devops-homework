@@ -1,0 +1,42 @@
+# ======== PROBLEM: mailer Pod never starts ========
+$ kubectl apply -f scenarios/09-configuration/broken.yaml
+secret/smtp created
+pod/mailer created
+
+# 1. IDENTIFY
+$ kubectl -n s14 get pod mailer
+NAME     READY   STATUS                       RESTARTS   AGE
+mailer   0/1     CreateContainerConfigError   0          8s
+
+# 2. INVESTIGATE
+$ kubectl -n s14 events --for pod/mailer | tail -6
+LAST SEEN         TYPE      REASON      OBJECT       MESSAGE
+8s                Normal    Scheduled   Pod/mailer   Successfully assigned s14/mailer to minikube
+7s (x2 over 8s)   Normal    Pulled      Pod/mailer   Container image "busybox:1.36" already present on machine and can be accessed by the pod
+7s (x2 over 8s)   Warning   Failed      Pod/mailer   Error: couldn't find key smtp_password in Secret s14/smtp
+
+$ kubectl -n s14 get secret smtp -o jsonpath='{.data}' | python3 -c 'import json,sys; print("keys in secret smtp:", list(json.load(sys.stdin)))'
+keys in secret smtp: ['password']
+
+# 3. ROOT CAUSE: env SMTP_PASSWORD references key 'smtp_password', but Secret smtp only has key 'password' -> CreateContainerConfigError
+# 4. FIX: reference the right key (or add the key to the Secret)
+$ diff scenarios/09-configuration/broken.yaml scenarios/09-configuration/fixed.yaml
+18c18
+<             secretKeyRef: { name: smtp, key: smtp_password }   # key does not exist (it is "password")
+---
+>             secretKeyRef: { name: smtp, key: password }
+
+$ kubectl -n s14 delete pod mailer --wait && kubectl apply -f scenarios/09-configuration/fixed.yaml && kubectl -n s14 wait --for=condition=Ready pod/mailer --timeout=120s
+pod "mailer" deleted from s14 namespace
+secret/smtp configured
+pod/mailer created
+pod/mailer condition met
+
+# 5. VERIFY
+$ kubectl -n s14 get pod mailer
+NAME     READY   STATUS    RESTARTS   AGE
+mailer   1/1     Running   0          0s
+
+$ kubectl -n s14 exec mailer -- sh -c "echo SMTP_PASSWORD is set: \${SMTP_PASSWORD:+yes}"
+SMTP_PASSWORD is set: yes
+

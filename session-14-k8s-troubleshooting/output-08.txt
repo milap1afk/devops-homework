@@ -1,0 +1,45 @@
+# ======== PROBLEM: payments Pod is Running, but nothing can connect to it ========
+$ kubectl apply -f scenarios/08-pod-networking/broken.yaml && kubectl -n s14 wait --for=condition=Ready pod/payments --timeout=120s
+pod/payments created
+pod/payments condition met
+
+# 1. IDENTIFY
+$ kubectl -n s14 get pod payments -o wide
+NAME       READY   STATUS    RESTARTS   AGE   IP             NODE       NOMINATED NODE   READINESS GATES
+payments   1/1     Running   0          1s    10.244.0.243   minikube   <none>           <none>
+
+$ kubectl -n s14 exec netshoot -- curl -s -m 3 http://10.244.0.243:5678 || echo 'connection failed'
+command terminated with exit code 7
+connection failed
+
+# 2. INVESTIGATE
+$ kubectl -n s14 exec netshoot -- ping -c 2 -W 2 10.244.0.243 | tail -2   # L3 networking to the Pod works
+2 packets transmitted, 2 received, 0% packet loss, time 1034ms
+rtt min/avg/max/mdev = 0.337/0.492/0.648/0.155 ms
+
+$ kubectl debug -n s14 payments -it=false --image=nicolaka/netshoot:v0.13 --target=payments -- ss -ltnp 2>&1 | tail -3
+Defaulting debug container name to debugger-flsxr.
+All commands and output from this session will be recorded in container logs, including credentials and sensitive information passed through the command prompt.
+If you don't see a command prompt, try pressing enter.
+
+$ kubectl -n s14 logs payments -c $(kubectl -n s14 get pod payments -o jsonpath='{.spec.ephemeralContainers[-1].name}') | tail -3
+State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess                          
+LISTEN 0      4096       127.0.0.1:5678      0.0.0.0:*    users:(("http-echo",pid=1,fd=3))
+
+# 3. ROOT CAUSE: the app listens on 127.0.0.1:5678 (loopback inside the Pod), not 0.0.0.0 -> only reachable from inside its own network namespace
+# 4. FIX: bind to all interfaces (-listen=:5678)
+$ diff scenarios/08-pod-networking/broken.yaml scenarios/08-pod-networking/fixed.yaml
+8c8
+<       args: ["-listen=127.0.0.1:5678", "-text=payments OK"]   # loopback only: unreachable from other Pods
+---
+>       args: ["-listen=:5678", "-text=payments OK"]
+
+$ kubectl -n s14 delete pod payments --wait && kubectl apply -f scenarios/08-pod-networking/fixed.yaml && kubectl -n s14 wait --for=condition=Ready pod/payments --timeout=120s
+pod "payments" deleted from s14 namespace
+pod/payments created
+pod/payments condition met
+
+# 5. VERIFY
+$ kubectl -n s14 exec netshoot -- curl -s -m 3 http://10.244.0.244:5678
+payments OK
+

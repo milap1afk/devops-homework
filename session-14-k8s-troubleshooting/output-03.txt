@@ -1,0 +1,43 @@
+# ======== PROBLEM: web Pod shows ErrImagePull ========
+$ kubectl apply -f scenarios/03-errimagepull/broken.yaml
+pod/web-typo created
+
+# 1. IDENTIFY
+$ kubectl -n s14 get pod web-typo
+NAME       READY   STATUS         RESTARTS   AGE
+web-typo   0/1     ErrImagePull   0          2s
+
+# 2. INVESTIGATE
+$ kubectl -n s14 events --for pod/web-typo | tail -6
+2s                      Normal    Scheduled   Pod/web-typo   Successfully assigned s14/web-typo to minikube
+2s                      Normal    Pulling     Pod/web-typo   Pulling image "nginx:1.27-alpnie"
+1s                      Warning   Failed      Pod/web-typo   Failed to pull image "nginx:1.27-alpnie": rpc error: code = NotFound desc = failed to pull and unpack image "docker.io/library/nginx:1.27-alpnie": failed to resolve reference "docker.io/library/nginx:1.27-alpnie": docker.io/library/nginx:1.27-alpnie: not found
+1s                      Warning   Failed      Pod/web-typo   Error: ErrImagePull
+1s                      Normal    BackOff     Pod/web-typo   Back-off pulling image "nginx:1.27-alpnie"
+1s                      Warning   Failed      Pod/web-typo   Error: ImagePullBackOff
+
+$ kubectl -n s14 get pod web-typo -o jsonpath='{.spec.containers[0].image}{"\n"}'
+nginx:1.27-alpnie
+
+$ docker manifest inspect nginx:1.27-alpnie 2>&1 | head -1; docker manifest inspect nginx:1.27-alpine >/dev/null && echo "nginx:1.27-alpine exists"
+no such manifest: docker.io/library/nginx:1.27-alpnie
+nginx:1.27-alpine exists
+
+# 3. ROOT CAUSE: typo in the image tag (alpnie) -> registry returns 'not found' -> ErrImagePull (first failure) -> ImagePullBackOff (retrying)
+# 4. FIX: correct the tag. A Pod's image can be changed in place:
+$ kubectl -n s14 set image pod/web-typo web=nginx:1.27-alpine
+pod/web-typo image updated
+
+$ kubectl -n s14 wait --for=condition=Ready pod/web-typo --timeout=120s
+pod/web-typo condition met
+
+# 5. VERIFY
+$ kubectl -n s14 get pod web-typo
+NAME       READY   STATUS    RESTARTS   AGE
+web-typo   1/1     Running   0          36s
+
+$ kubectl -n s14 events --for pod/web-typo | tail -3
+0s                     Normal    Pulled      Pod/web-typo   Container image "nginx:1.27-alpine" already present on machine and can be accessed by the pod
+0s                     Normal    Created     Pod/web-typo   Container created
+0s                     Normal    Started     Pod/web-typo   Container started
+

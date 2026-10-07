@@ -1,0 +1,19 @@
+[1. Build & unit test / Unit tests + coverage (threshold 80%)] Tests:       6 passed, 6 total
+[4. Secret scan (Gitleaks) / Gitleaks - git history of this session] 7:32AM INF no leaks found
+[4. Secret scan (Gitleaks) / Gitleaks - current files] 7:32AM INF no leaks found
+[2. SAST (Semgrep) / Semgrep scan (JavaScript, Node.js, Express, Dockerfile, secrets rules)]  • Findings: 0 (0 blocking)
+[5. Docker build / Build image (not pushed yet - it must pass the security gate first)] #11 1.522 found 0 vulnerabilities
+[3. SCA (npm audit + Trivy fs) / npm audit (production dependencies, fail on high+)] found 0 vulnerabilities
+[7. Security gate / Evaluate all security checks] Security gate PASSED
+[9. Deploy to Kubernetes / Apply manifests] networkpolicy.networking.k8s.io/default-deny-ingress created
+[9. Deploy to Kubernetes / Apply manifests] networkpolicy.networking.k8s.io/allow-http-to-api created
+[9. Deploy to Kubernetes / Apply manifests] deployment "kirana-catalog" successfully rolled out
+[9. Deploy to Kubernetes / Apply manifests] pod/kirana-catalog-5d648946c8-d8pbm   1/1     Running   0          1s    10.244.0.6   dev-control-plane   <none>           <none>
+[9. Deploy to Kubernetes / Apply manifests] pod/kirana-catalog-5d648946c8-znxmg   1/1     Running   0          1s    10.244.0.5   dev-control-plane   <none>           <none>
+[9. Deploy to Kubernetes / Apply manifests] networkpolicy.networking.k8s.io/allow-http-to-api      app=kirana-catalog   1s
+[9. Deploy to Kubernetes / Apply manifests] networkpolicy.networking.k8s.io/default-deny-ingress   <none>               1s
+[9. Deploy to Kubernetes / Verify Pod security settings] readOnlyRootFilesystem=true allowPrivilegeEscalation=false drop=["ALL"]
+[9. Deploy to Kubernetes / Verify Pod security settings] uid 1000
+[9. Deploy to Kubernetes / Smoke test] {"status":"ok","version":"fc15dc61d673da83b65c4841f3a23ddcda6b9644"}Handling connection for 8080
+[8. Push image to GHCR / Load, tag and push the exact image that was scanned] fc15dc61d673da83b65c4841f3a23ddcda6b9644: digest: sha256:95d0a378ebde3dc10abbe0a5e72ee21346721a82fe5ca000e1f5b1ee8f994feb size: 1992
+[8. Push image to GHCR / Load, tag and push the exact image that was scanned] latest: digest: sha256:95d0a378ebde3dc10abbe0a5e72ee21346721a82fe5ca000e1f5b1ee8f994feb size: 1992

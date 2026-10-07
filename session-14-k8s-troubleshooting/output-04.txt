@@ -1,0 +1,59 @@
+# ======== PROBLEM: reports Pod stays Pending ========
+$ kubectl apply -f scenarios/04-pending/broken.yaml
+deployment.apps/reports created
+
+# 1. IDENTIFY
+$ kubectl -n s14 get pods -l app=reports -o wide
+NAME                       READY   STATUS    RESTARTS   AGE   IP       NODE     NOMINATED NODE   READINESS GATES
+reports-6486778846-bx9pl   0/1     Pending   0          7s    <none>   <none>   <none>           <none>
+
+# 2. INVESTIGATE
+$ kubectl -n s14 events --for pod/reports-6486778846-bx9pl | tail -6
+LAST SEEN   TYPE      REASON             OBJECT                         MESSAGE
+7s          Warning   FailedScheduling   Pod/reports-6486778846-bx9pl   0/1 nodes are available: 1 node(s) didn't match Pod's node affinity/selector. preemption: 0/1 nodes are available: 1 Preemption is not helpful for scheduling.
+
+$ kubectl get nodes --show-labels | tr "," "\n" | grep -E "NAME|disktype|kubernetes.io/hostname" 
+NAME       STATUS   ROLES           AGE    VERSION   LABELS
+kubernetes.io/hostname=minikube
+
+$ kubectl describe node minikube | grep -A10 'Allocatable:' | grep -E '^  (cpu|memory)'
+  cpu:                4
+  memory:             5021984Ki
+
+$ kubectl describe node minikube | sed -n '/Allocated resources/,/Events/p' | head -8
+Allocated resources:
+  (Total limits may be over 100 percent, i.e., overcommitted.)
+  Resource           Requests     Limits
+  --------           --------     ------
+  cpu                1050m (26%)  100m (2%)
+  memory             510Mi (10%)  220Mi (4%)
+  ephemeral-storage  0 (0%)       0 (0%)
+  hugepages-1Gi      0 (0%)       0 (0%)
+
+# 3. ROOT CAUSE (two problems): nodeSelector disktype=ssd matches no node, AND requests.memory 32Gi > node allocatable (~4.8Gi)
+# 4. FIX: label the node (or remove the selector) and request a realistic amount of memory
+$ kubectl label node minikube disktype=ssd
+node/minikube labeled
+
+$ diff scenarios/04-pending/broken.yaml scenarios/04-pending/fixed.yaml
+11c11
+<         disktype: ssd              # no node has this label
+---
+>         disktype: ssd              # kept: the node is now labelled (kubectl label node minikube disktype=ssd)
+16c16
+<             requests: { memory: 32Gi }   # more than the node has
+---
+>             requests: { memory: 64Mi }
+
+$ kubectl apply -f scenarios/04-pending/fixed.yaml && kubectl -n s14 rollout status deploy/reports --timeout=120s
+deployment.apps/reports configured
+Waiting for deployment "reports" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "reports" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "reports" rollout to finish: 1 old replicas are pending termination...
+deployment "reports" successfully rolled out
+
+# 5. VERIFY
+$ kubectl -n s14 get pods -l app=reports -o wide
+NAME                      READY   STATUS    RESTARTS   AGE   IP             NODE       NOMINATED NODE   READINESS GATES
+reports-85bd9954f-spl5h   1/1     Running   0          1s    10.244.0.247   minikube   <none>           <none>
+

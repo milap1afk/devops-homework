@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: billing-config, namespace: s14 }
+data:
+  tax_rate: "0.18"
+---
+apiVersion: v1
+kind: Pod
+metadata: { name: billing, namespace: s14 }
+spec:
+  containers:
+    - name: billing
+      image: nginx:1.27-alpine
+      volumeMounts: [{ name: cfg, mountPath: /etc/billing }]
+  volumes:
+    - name: cfg
+      configMap: { name: billing-config }

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Pod
+metadata: { name: payments, namespace: s14, labels: { app: payments } }
+spec:
+  containers:
+    - name: payments
+      image: hashicorp/http-echo:1.0
+      args: ["-listen=:5678", "-text=payments OK"]
+      ports: [{ containerPort: 5678 }]

@@ -1,0 +1,36 @@
+# Service "inventory" lives in namespace s14-backend; the client in s14 calls it by short name
+apiVersion: v1
+kind: Namespace
+metadata: { name: s14-backend }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: inventory, namespace: s14-backend }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: inventory } }
+  template:
+    metadata: { labels: { app: inventory } }
+    spec:
+      containers:
+        - name: inventory
+          image: hashicorp/http-echo:1.0
+          args: ["-listen=:5678", "-text=inventory OK"]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: inventory, namespace: s14-backend }
+spec:
+  selector: { app: inventory }
+  ports: [{ port: 80, targetPort: 5678 }]
+---
+apiVersion: v1
+kind: Pod
+metadata: { name: storefront, namespace: s14 }
+spec:
+  containers:
+    - name: storefront
+      image: curlimages/curl:8.10.1
+      env:
+        - { name: INVENTORY_URL, value: "http://inventory" }     # short name only resolves in the SAME namespace
+      command: ["sh", "-c", 'while true; do curl -s -m 3 "$INVENTORY_URL" || echo "ERROR calling $INVENTORY_URL"; sleep 5; done']

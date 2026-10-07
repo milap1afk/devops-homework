@@ -1,0 +1,57 @@
+# ======== PROBLEM: the orders app never becomes Ready ========
+$ kubectl apply -f scenarios/01-crashloopbackoff/broken.yaml
+deployment.apps/orders created
+
+# 1. IDENTIFY
+$ kubectl -n s14 get pods -l app=orders
+NAME                      READY   STATUS   RESTARTS      AGE
+orders-5774586b5d-ks7xx   0/1     Error    3 (31s ago)   45s
+
+# 2. INVESTIGATE
+$ kubectl -n s14 describe pod -l app=orders | grep -A6 -E '^    State:|Last State'
+    State:          Terminated
+      Reason:       Error
+      Exit Code:    1
+      Started:      Wed, 07 Oct 2026 13:09:36 +0530
+      Finished:     Wed, 07 Oct 2026 13:09:36 +0530
+    Last State:     Terminated
+      Reason:       Error
+      Exit Code:    1
+      Started:      Wed, 07 Oct 2026 13:09:08 +0530
+      Finished:     Wed, 07 Oct 2026 13:09:08 +0530
+    Ready:          False
+    Restart Count:  3
+
+$ kubectl -n s14 logs orders-5774586b5d-ks7xx   # (use --previous when the container is currently running again)
+FATAL: DB_HOST is not set
+
+$ kubectl -n s14 events --for pod/orders-5774586b5d-ks7xx | tail -6
+LAST SEEN          TYPE      REASON      OBJECT                        MESSAGE
+45s                Normal    Scheduled   Pod/orders-5774586b5d-ks7xx   Successfully assigned s14/orders-5774586b5d-ks7xx to minikube
+3s (x4 over 45s)   Normal    Pulled      Pod/orders-5774586b5d-ks7xx   Container image "busybox:1.36" already present on machine and can be accessed by the pod
+3s (x4 over 45s)   Normal    Created     Pod/orders-5774586b5d-ks7xx   Container created
+3s (x4 over 45s)   Normal    Started     Pod/orders-5774586b5d-ks7xx   Container started
+3s (x3 over 44s)   Warning   BackOff     Pod/orders-5774586b5d-ks7xx   Back-off restarting failed container orders in pod orders-5774586b5d-ks7xx_s14(d3ada986-41ba-45a3-b62f-7d852504dc27)
+
+# 3. ROOT CAUSE: the container exits with code 1 because required env var DB_HOST is missing; restartPolicy Always -> restart loop with growing back-off
+# 4. FIX: add DB_HOST to the Deployment
+$ diff scenarios/01-crashloopbackoff/broken.yaml scenarios/01-crashloopbackoff/fixed.yaml
+12a13,14
+>           env:
+>             - { name: DB_HOST, value: "mysql.s14.svc.cluster.local" }
+
+$ kubectl apply -f scenarios/01-crashloopbackoff/fixed.yaml && kubectl -n s14 rollout status deploy/orders --timeout=120s
+deployment.apps/orders configured
+Waiting for deployment "orders" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "orders" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "orders" rollout to finish: 1 old replicas are pending termination...
+deployment "orders" successfully rolled out
+
+# 5. VERIFY
+$ kubectl -n s14 get pods -l app=orders
+NAME                      READY   STATUS    RESTARTS   AGE
+orders-5f54dfd77b-ff6m5   1/1     Running   0          2s
+
+$ kubectl -n s14 logs deploy/orders
+connected to mysql.s14.svc.cluster.local
+

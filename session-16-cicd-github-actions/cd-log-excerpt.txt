@@ -1,0 +1,11 @@
+[Create the app Secret from a GitHub Actions secret] secret/kirana-api-secret created
+[Deploy] deployment.apps/kirana-api created
+[Deploy] service/kirana-api created
+[Deploy] deployment "kirana-api" successfully rolled out
+[Deploy] deployment.apps/kirana-api   2/2     2            2           8s    api          ghcr.io/milap1afk/kirana-api:fc15dc61d673da83b65c4841f3a23ddcda6b9644   app=kirana-api
+[Deploy] pod/kirana-api-7ff96cdf99-62kdv   1/1     Running   0          8s    10.244.0.5   dev-control-plane   <none>           <none>
+[Deploy] pod/kirana-api-7ff96cdf99-d7chr   1/1     Running   0          8s    10.244.0.6   dev-control-plane   <none>           <none>
+[Deploy] service/kirana-api   ClusterIP   10.96.178.136   <none>        80/TCP    8s    app=kirana-api
+[Verify deployment (smoke test through the Service)] {"status":"ok","version":"fc15dc61d673da83b65c4841f3a23ddcda6b9644"}
+[Verify deployment (smoke test through the Service)] {"balance":500,"customer":"Ramesh","reminder":"Ramesh ji, ₹500 बाकी हैं."}
+[Verify deployment (smoke test through the Service)] request without API key -> HTTP 401

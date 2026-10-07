@@ -1,0 +1,14 @@
+[Unit tests (pytest + coverage)] tests/test_app.py::test_clean_name_strips_honorifics[Ramesh] PASSED      [  9%]
+[Unit tests (pytest + coverage)] tests/test_app.py::test_clean_name_strips_honorifics[Ramesh bhai] PASSED [ 18%]
+[Unit tests (pytest + coverage)] tests/test_app.py::test_clean_name_strips_honorifics[Rameshbhai] PASSED  [ 27%]
+[Unit tests (pytest + coverage)] tests/test_app.py::test_clean_name_strips_honorifics[Shri Ramesh ji] PASSED [ 36%]
+[Unit tests (pytest + coverage)] tests/test_app.py::test_clean_name_strips_honorifics[  ramesh  ] PASSED  [ 45%]
+[Unit tests (pytest + coverage)] tests/test_app.py::test_health PASSED                                    [ 54%]
+[Unit tests (pytest + coverage)] tests/test_app.py::test_add_and_balance PASSED                           [ 63%]
+[Unit tests (pytest + coverage)] tests/test_app.py::test_rejects_bad_entries[bad0] PASSED                 [ 72%]
+[Unit tests (pytest + coverage)] tests/test_app.py::test_rejects_bad_entries[bad1] PASSED                 [ 81%]
+[Unit tests (pytest + coverage)] tests/test_app.py::test_rejects_bad_entries[bad2] PASSED                 [ 90%]
+[Unit tests (pytest + coverage)] tests/test_app.py::test_api_key_required_when_set PASSED                 [100%]
+[Unit tests (pytest + coverage)] app.py      48      2    96%
+[Unit tests (pytest + coverage)] TOTAL       48      2    96%
+[Unit tests (pytest + coverage)] ============================== 11 passed in 0.37s ==============================

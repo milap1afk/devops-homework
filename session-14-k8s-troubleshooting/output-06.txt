@@ -1,0 +1,61 @@
+# ======== PROBLEM: other services cannot reach the cart Service ========
+$ kubectl apply -f scenarios/06-service-connectivity/broken.yaml && kubectl -n s14 rollout status deploy/cart --timeout=120s
+deployment.apps/cart created
+service/cart created
+Waiting for deployment "cart" rollout to finish: 0 of 2 updated replicas are available...
+Waiting for deployment "cart" rollout to finish: 1 of 2 updated replicas are available...
+deployment "cart" successfully rolled out
+
+# 1. IDENTIFY
+$ kubectl -n s14 exec netshoot -- curl -s -m 3 http://cart || echo "curl failed (exit $?)"
+command terminated with exit code 7
+curl failed (exit 7)
+
+# 2. INVESTIGATE
+$ kubectl -n s14 get svc cart -o wide
+NAME   TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE   SELECTOR
+cart   ClusterIP   10.108.173.130   <none>        80/TCP    1s    app=carts
+
+$ kubectl -n s14 get endpointslices -l kubernetes.io/service-name=cart
+NAME         ADDRESSTYPE   PORTS     ENDPOINTS   AGE
+cart-n5qbx   IPv4          <unset>   <unset>     1s
+
+$ kubectl -n s14 get pods -l app=cart --show-labels -o wide
+NAME                   READY   STATUS    RESTARTS   AGE   IP             NODE       NOMINATED NODE   READINESS GATES   LABELS
+cart-5cd8cd548-jqpp8   1/1     Running   0          1s    10.244.0.239   minikube   <none>           <none>            app=cart,pod-template-hash=5cd8cd548
+cart-5cd8cd548-v5hw7   1/1     Running   0          1s    10.244.0.238   minikube   <none>           <none>            app=cart,pod-template-hash=5cd8cd548
+
+$ kubectl -n s14 get pods -l app=carts
+No resources found in s14 namespace.
+
+$ kubectl -n s14 exec netshoot -- curl -s -m 3 http://10.244.0.239:5678   # Pod itself is healthy on 5678
+cart service OK
+
+$ kubectl -n s14 exec netshoot -- curl -s -m 3 http://10.244.0.239:8080 || echo 'nothing listens on 8080'
+command terminated with exit code 7
+nothing listens on 8080
+
+# 3. ROOT CAUSE (two problems): Service selector app=carts matches NO Pods (empty endpoints), and targetPort 8080 is wrong (container listens on 5678)
+# 4. FIX: correct selector and targetPort
+$ diff scenarios/06-service-connectivity/broken.yaml scenarios/06-service-connectivity/fixed.yaml
+20c20
+<   selector: { app: carts }        # typo: Pods are labelled app=cart
+---
+>   selector: { app: cart }
+23c23
+<       targetPort: 8080            # wrong: the container listens on 5678
+---
+>       targetPort: 5678
+
+$ kubectl apply -f scenarios/06-service-connectivity/fixed.yaml
+deployment.apps/cart unchanged
+service/cart configured
+
+# 5. VERIFY
+$ kubectl -n s14 get endpointslices -l kubernetes.io/service-name=cart
+NAME         ADDRESSTYPE   PORTS   ENDPOINTS                   AGE
+cart-n5qbx   IPv4          5678    10.244.0.238,10.244.0.239   8s
+
+$ kubectl -n s14 exec netshoot -- curl -s -m 3 http://cart
+cart service OK
+
