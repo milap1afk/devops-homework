@@ -1,0 +1,38 @@
+################ INCIDENT (real, not staged): Postgres CrashLoopBackOff, all API pods 0/1 ################
+# 1. IDENTIFY
+$ kubectl -n kirana get pods
+NAME                          READY   STATUS    RESTARTS        AGE
+kirana-api-5b469b9656-d2fd4   0/1     Running   2 (7m35s ago)   12m
+kirana-api-5b469b9656-d5gz6   0/1     Running   1               21m
+kirana-api-5b469b9656-h2mj7   0/1     Running   2 (2m41s ago)   6m16s
+kirana-api-5b469b9656-hnwdq   0/1     Running   2 (7m35s ago)   18m
+kirana-api-5b469b9656-wphkg   0/1     Running   0               21m
+kirana-postgres-0             0/1     Running   7 (111s ago)    20m
+
+$ kubectl -n argocd get application kirana-final
+NAME           SYNC STATUS   HEALTH STATUS
+kirana-final   Synced        Healthy
+
+# 2. INVESTIGATE
+$ kubectl -n kirana logs kirana-postgres-0 --previous | tail -3
+2026-10-07 08:40:21.880 UTC [151] FATAL:  the database system is shutting down
+2026-10-07 08:40:22.327 UTC [38] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.906 s, sync=0.012 s, total=1.328 s; sync files=2, longest=0.005 s, average=0.005 s; distance=0 kB, estimate=0 kB; lsn=0/1955430, redo lsn=0/1955430
+2026-10-07 08:40:23.381 UTC [1] LOG:  database system is shut down
+
+$ kubectl -n kirana events --for pod/kirana-postgres-0 | grep -E "Unhealthy|Killing" | tail -3 | cut -c1-200
+11m (x7 over 14m)     Warning   Unhealthy          Pod/kirana-postgres-0   Liveness probe failed: command timed out: "sh -c pg_isready -U $POSTGRES_USER -d $POSTGRES_DB" timed out after 1s
+10m (x13 over 14m)    Warning   Unhealthy          Pod/kirana-postgres-0   Readiness probe failed: command timed out: "sh -c pg_isready -U $POSTGRES_USER -d $POSTGRES_DB" timed out after 1s
+6m54s (x4 over 13m)   Normal    Killing            Pod/kirana-postgres-0   Container postgres failed liveness probe, will be restarted
+
+$ kubectl top node
+error: Metrics API not available
+
+$ docker stats --no-stream --format '{{.Name}} CPU={{.CPUPerc}} MEM={{.MemUsage}}' minikube
+minikube CPU=419.34% MEM=3.09GiB / 3.418GiB
+
+$ kubectl -n kirana get sts kirana-postgres -o jsonpath='{.spec.template.spec.containers[0].livenessProbe}'; echo
+{"exec":{"command":["sh","-c","pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]},"failureThreshold":3,"initialDelaySeconds":20,"periodSeconds":10,"successThreshold":1,"timeoutSeconds":1}
+
+$ kubectl get pods -A --no-headers | wc -l | xargs echo 'pods on the node:'
+pods on the node: 34
+

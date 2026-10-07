@@ -13,3 +13,6 @@ ingress:
 config:
   SHOP_NAME: "Sharma Kirana Store"
   APP_ENV: "minikube"
+
+autoscaling:
+  maxReplicas: 3             # single small laptop node

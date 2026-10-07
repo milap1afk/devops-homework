@@ -23,9 +23,9 @@ resources:
   limits:   { cpu: 500m, memory: 192Mi }
 
 probes:
-  liveness:  { path: /health, initialDelaySeconds: 5, periodSeconds: 10 }
-  readiness: { path: /ready,  initialDelaySeconds: 3, periodSeconds: 5 }
-  startup:   { path: /health, failureThreshold: 30, periodSeconds: 2 }
+  liveness:  { path: /health, initialDelaySeconds: 5, periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3 }
+  readiness: { path: /ready,  initialDelaySeconds: 3, periodSeconds: 5,  timeoutSeconds: 3 }
+  startup:   { path: /health, failureThreshold: 30, periodSeconds: 2, timeoutSeconds: 3 }
 
 service:
   port: 80
@@ -48,6 +48,10 @@ postgres:
   user: kirana
   storage: 1Gi
   storageClassName: ""    # "" = cluster default StorageClass
+  probes:
+    # liveness restarts the DB, so it must be patient: a busy node must not kill a healthy database
+    liveness:  { initialDelaySeconds: 30, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 6 }
+    readiness: { periodSeconds: 5, timeoutSeconds: 3, failureThreshold: 3 }
 
 # ---------------------------------------------------------------- monitoring
 monitoring:
