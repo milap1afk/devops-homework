@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-rolling
+  annotations:
+    kubernetes.io/change-cause: "initial release nginx:1.26"
+spec:
+  replicas: 4
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1          # at most 1 extra Pod above 4 during the update
+      maxUnavailable: 1    # at most 1 Pod down at any moment
+  minReadySeconds: 5       # a new Pod must stay Ready 5s before the next one is replaced
+  selector:
+    matchLabels:
+      app: web-rolling
+  template:
+    metadata:
+      labels:
+        app: web-rolling
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.26
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet: { path: /, port: 80 }
+            periodSeconds: 2

@@ -1,0 +1,173 @@
+# ---- Navigation & files ----
+$ pwd
+/root/practice
+
+$ mkdir -p project/{src,logs,docs} && touch project/src/app.py project/docs/README.md
+
+$ tree project
+project
+|-- docs
+|   `-- README.md
+|-- logs
+`-- src
+    `-- app.py
+
+4 directories, 2 files
+
+$ cp project/src/app.py project/src/app_backup.py && mv project/docs/README.md project/
+
+$ ls -lah project
+total 20K
+drwxr-xr-x 5 root root 4.0K Oct  7 06:08 .
+drwxr-xr-x 3 root root 4.0K Oct  7 06:08 ..
+-rw-r--r-- 1 root root    0 Oct  7 06:08 README.md
+drwxr-xr-x 2 root root 4.0K Oct  7 06:08 docs
+drwxr-xr-x 2 root root 4.0K Oct  7 06:08 logs
+drwxr-xr-x 2 root root 4.0K Oct  7 06:08 src
+
+$ echo -e "error: disk full\ninfo: started\nerror: timeout\ninfo: ok" > project/logs/app.log
+
+$ cat project/logs/app.log
+error: disk full
+info: started
+error: timeout
+info: ok
+
+$ head -2 project/logs/app.log; tail -1 project/logs/app.log
+error: disk full
+info: started
+info: ok
+
+$ wc -l project/logs/app.log
+4 project/logs/app.log
+
+# ---- Search & text processing ----
+$ grep -n "error" project/logs/app.log
+1:error: disk full
+3:error: timeout
+
+$ grep -c "info" project/logs/app.log
+2
+
+$ find project -name "*.py"
+project/src/app.py
+project/src/app_backup.py
+
+$ cut -d: -f1 project/logs/app.log | sort | uniq -c
+      2 error
+      2 info
+
+$ awk -F: '{print $2}' project/logs/app.log
+ disk full
+ started
+ timeout
+ ok
+
+$ sed "s/error/ERROR/" project/logs/app.log
+ERROR: disk full
+info: started
+ERROR: timeout
+info: ok
+
+# ---- Permissions & ownership ----
+$ chmod 750 project/src/app.py && ls -l project/src/app.py
+-rwxr-x--- 1 root root 0 Oct  7 06:08 project/src/app.py
+
+$ chmod u+x,g-r project/src/app_backup.py && ls -l project/src/app_backup.py
+-rwx---r-- 1 root root 0 Oct  7 06:08 project/src/app_backup.py
+
+$ chown alice:alice project/README.md && ls -l project/README.md
+-rw-r--r-- 1 alice alice 0 Oct  7 06:08 project/README.md
+
+$ umask
+0022
+
+# ---- Processes ----
+$ sleep 300 & echo "started PID $!"
+started PID 365
+
+$ ps aux --sort=-%mem | head -5
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root          23  0.1  0.3  41888 15564 ?        S<s  06:07   0:00 /usr/lib/systemd/systemd-journald
+systemd+      72  0.1  0.2  21296 12516 ?        Ss   06:07   0:00 /usr/lib/systemd/systemd-resolved
+root           1  0.6  0.2  21224 11908 ?        Ss   06:07   0:00 /sbin/init
+root          82  0.0  0.1  17840  7808 ?        Ss   06:07   0:00 /usr/lib/systemd/systemd-logind
+
+$ pgrep -a sleep
+365 sleep 300
+
+$ top -b -n 1 | head -7
+top - 06:08:38 up 16 min,  0 user,  load average: 1.44, 0.98, 0.57
+Tasks:  11 total,   1 running,  10 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  2.4 us,  0.0 sy,  0.0 ni, 97.6 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st 
+MiB Mem :   4904.3 total,    202.8 free,   1134.5 used,   3764.4 buff/cache     
+MiB Swap:      0.0 total,      0.0 free,      0.0 used.   3769.8 avail Mem 
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+
+$ kill %1 2>/dev/null || pkill sleep; pgrep sleep || echo "sleep killed"
+sleep killed
+
+# ---- System info ----
+$ uname -a
+Linux devops-lab 6.8.0-117-generic #117-Ubuntu SMP PREEMPT_DYNAMIC Thu May  7 17:26:37 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+
+$ cat /etc/os-release | head -2
+PRETTY_NAME="Ubuntu 24.04.5 LTS"
+NAME="Ubuntu"
+
+$ uptime
+ 06:08:38 up 16 min,  0 user,  load average: 1.44, 0.98, 0.57
+
+$ free -h
+               total        used        free      shared  buff/cache   available
+Mem:           4.8Gi       1.1Gi       203Mi        10Mi       3.7Gi       3.7Gi
+Swap:             0B          0B          0B
+
+$ df -h /
+Filesystem      Size  Used Avail Use% Mounted on
+overlay          40G  7.0G   31G  19% /
+
+$ du -sh /usr/bin /etc
+41M	/usr/bin
+1.7M	/etc
+
+$ whoami; hostname; id
+root
+devops-lab
+uid=0(root) gid=0(root) groups=0(root)
+
+# ---- Archives ----
+$ tar -czf project.tar.gz project && ls -lh project.tar.gz
+-rw-r--r-- 1 root root 327 Oct  7 06:08 project.tar.gz
+
+$ tar -tzf project.tar.gz | head -4
+project/
+project/logs/
+project/logs/app.log
+project/README.md
+
+# ---- Networking basics ----
+$ ip -brief addr
+lo               UNKNOWN        127.0.0.1/8 ::1/128 
+eth0@if121       UP             172.17.0.2/16 
+
+$ ss -tuln | head -5
+Netid State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess
+udp   UNCONN 0      0         127.0.0.54:53        0.0.0.0:*          
+udp   UNCONN 0      0      127.0.0.53%lo:53        0.0.0.0:*          
+tcp   LISTEN 0      4096      127.0.0.54:53        0.0.0.0:*          
+tcp   LISTEN 0      4096   127.0.0.53%lo:53        0.0.0.0:*          
+
+# ---- Help & history ----
+$ which ls; type cd
+/usr/bin/ls
+cd is a shell builtin
+
+$ man -f ls 2>/dev/null || ls --help | head -2
+This system has been minimized by removing packages and content that are
+not required on a system that users do not log into.
+
+To restore this content, including manpages, you can run the 'unminimize'
+command. You will still need to ensure the 'man-db' package is installed.
+

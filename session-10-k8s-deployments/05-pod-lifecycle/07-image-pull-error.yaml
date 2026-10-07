@@ -1,0 +1,9 @@
+# Image tag does not exist -> ErrImagePull -> ImagePullBackOff (phase Pending)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lifecycle-badimage
+spec:
+  containers:
+    - name: app
+      image: nginx:this-tag-does-not-exist

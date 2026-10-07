@@ -1,0 +1,63 @@
+$ echo "original content" > original.txt
+
+$ ln -s original.txt soft.txt        # soft (symbolic) link
+
+$ ln original.txt hard.txt           # hard link
+
+# -i shows inode numbers: hard.txt shares original.txt's inode, soft.txt has its own
+$ ls -li
+total 8
+1849218 -rw-r--r-- 2 root root 17 Oct  7 06:08 hard.txt
+1849218 -rw-r--r-- 2 root root 17 Oct  7 06:08 original.txt
+1849219 lrwxrwxrwx 1 root root 12 Oct  7 06:08 soft.txt -> original.txt
+
+$ stat -c "%n  inode=%i  links=%h  type=%F" original.txt hard.txt soft.txt
+original.txt  inode=1849218  links=2  type=regular file
+hard.txt  inode=1849218  links=2  type=regular file
+soft.txt  inode=1849219  links=1  type=symbolic link
+
+$ readlink soft.txt
+original.txt
+
+$ echo "edited via hard link" >> hard.txt; cat original.txt
+original content
+edited via hard link
+
+# Delete the original file
+$ rm original.txt
+
+$ ls -li
+total 4
+1849218 -rw-r--r-- 1 root root 38 Oct  7 06:08 hard.txt
+1849219 lrwxrwxrwx 1 root root 12 Oct  7 06:08 soft.txt -> original.txt
+
+$ cat hard.txt     # still works: data lives while link count > 0
+original content
+edited via hard link
+
+$ cat soft.txt     # broken: it pointed to a NAME that no longer exists
+cat: soft.txt: No such file or directory
+
+$ find . -xtype l  # find dangling symlinks
+./soft.txt
+
+# Soft links can point to directories and across filesystems; hard links cannot
+$ ln -s /etc etc-link && ls -ld etc-link
+lrwxrwxrwx 1 root root 4 Oct  7 06:08 etc-link -> /etc
+
+$ ln /etc etc-hard
+ln: /etc: hard link not allowed for directory
+
+$ ln /proc/version proc-hard     # /proc is a different filesystem
+ln: failed to create hard link 'proc-hard' => '/proc/version': Invalid cross-device link
+
+# Deleting links
+$ rm soft.txt etc-link     # or: unlink soft.txt
+
+$ rm hard.txt
+
+$ ls -la
+total 8
+drwxr-xr-x 2 root root 4096 Oct  7 06:08 .
+drwx------ 1 root root 4096 Oct  7 06:08 ..
+

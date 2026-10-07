@@ -1,0 +1,29 @@
+# Shows container lifecycle hooks and probes:
+#  - postStart runs right after the container starts
+#  - readinessProbe gates traffic (READY 0/1 until it passes, after ~10s)
+#  - livenessProbe restarts the container if it fails
+#  - preStop runs before termination (graceful shutdown)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lifecycle-probes
+spec:
+  terminationGracePeriodSeconds: 15
+  containers:
+    - name: web
+      image: nginx:1.26
+      lifecycle:
+        postStart:
+          exec:
+            command: ["sh", "-c", "echo postStart ran at $(date) > /usr/share/nginx/html/hook.txt"]
+        preStop:
+          exec:
+            command: ["sh", "-c", "nginx -s quit; sleep 3"]
+      readinessProbe:
+        httpGet: { path: /, port: 80 }
+        initialDelaySeconds: 10
+        periodSeconds: 3
+      livenessProbe:
+        httpGet: { path: /, port: 80 }
+        initialDelaySeconds: 5
+        periodSeconds: 5

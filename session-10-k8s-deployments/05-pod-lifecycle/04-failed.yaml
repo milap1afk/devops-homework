@@ -1,0 +1,11 @@
+# Command exits non-zero and restartPolicy is Never -> phase Failed (STATUS Error)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lifecycle-failed
+spec:
+  restartPolicy: Never
+  containers:
+    - name: job
+      image: busybox:1.36
+      command: ["sh", "-c", "echo something broke; exit 1"]

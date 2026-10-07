@@ -1,0 +1,66 @@
+$ ls -l $(command -v adduser) $(command -v useradd)
+-rwxr-xr-x 1 root root  55191 Jul  5  2023 /usr/sbin/adduser
+-rwxr-xr-x 1 root root 142784 May 30  2024 /usr/sbin/useradd
+
+$ head -1 /usr/sbin/adduser    # adduser is a Perl script (front end)
+#! /usr/bin/perl
+
+$ file /usr/sbin/useradd 2>/dev/null || echo "useradd: compiled binary (low-level tool)"
+useradd: compiled binary (low-level tool)
+
+# ---- useradd with NO options (low-level) ----
+$ useradd bob
+
+$ getent passwd bob
+bob:x:1001:1001::/home/bob:/bin/sh
+
+$ ls -ld /home/bob
+ls: cannot access '/home/bob': No such file or directory
+
+$ grep "^bob:" /etc/shadow | cut -d: -f1,2
+bob:!
+
+# no home dir, shell = /bin/sh, password locked (!) -> needs extra flags
+# ---- adduser (recommended on Ubuntu/Debian) ----
+$ adduser --gecos "Alice Student" --disabled-password alice
+info: Adding user `alice' ...
+info: Selecting UID/GID from range 1000 to 59999 ...
+info: Adding new group `alice' (1002) ...
+info: Adding new user `alice' (1002) with group `alice (1002)' ...
+info: Creating home directory `/home/alice' ...
+info: Copying files from `/etc/skel' ...
+info: Adding new user `alice' to supplemental / extra groups `users' ...
+info: Adding user `alice' to group `users' ...
+
+$ echo "alice:Devops@123" | chpasswd
+
+$ getent passwd alice
+alice:x:1002:1002:Alice Student,,,:/home/alice:/bin/bash
+
+$ ls -la /home/alice
+total 20
+drwxr-x--- 2 alice alice 4096 Oct  7 06:08 .
+drwxr-xr-x 1 root  root  4096 Oct  7 06:08 ..
+-rw-r--r-- 1 alice alice  220 Oct  7 06:08 .bash_logout
+-rw-r--r-- 1 alice alice 3771 Oct  7 06:08 .bashrc
+-rw-r--r-- 1 alice alice  807 Oct  7 06:08 .profile
+
+$ id alice
+uid=1002(alice) gid=1002(alice) groups=1002(alice),100(users)
+
+$ usermod -aG sudo alice && id alice
+uid=1002(alice) gid=1002(alice) groups=1002(alice),27(sudo),100(users)
+
+$ su - alice -c "whoami; pwd; echo \$SHELL"
+alice
+/home/alice
+/bin/bash
+
+# useradd equivalent of adduser needs flags:
+$ echo "useradd -m -s /bin/bash -c \"Alice Student\" alice && passwd alice"
+useradd -m -s /bin/bash -c "Alice Student" alice && passwd alice
+
+$ userdel -r bob 2>&1 | grep -v "mail spool"; getent passwd bob || echo "bob removed"
+userdel: bob home directory (/home/bob) not found
+bob removed
+

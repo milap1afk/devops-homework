@@ -1,0 +1,12 @@
+# Exits non-zero with restartPolicy Always -> kubelet keeps restarting it with
+# growing back-off -> STATUS CrashLoopBackOff (phase stays Running)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lifecycle-crashloop
+spec:
+  restartPolicy: Always
+  containers:
+    - name: app
+      image: busybox:1.36
+      command: ["sh", "-c", "echo starting; sleep 2; exit 1"]

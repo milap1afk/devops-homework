@@ -1,0 +1,12 @@
+# Requests more CPU than any node has -> scheduler cannot place it -> stays Pending
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lifecycle-pending
+spec:
+  containers:
+    - name: app
+      image: nginx:1.26
+      resources:
+        requests:
+          cpu: "64"

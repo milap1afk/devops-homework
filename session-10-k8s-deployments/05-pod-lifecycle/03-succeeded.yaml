@@ -1,0 +1,11 @@
+# Command exits 0 and restartPolicy is Never -> phase Succeeded (STATUS Completed)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lifecycle-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: job
+      image: busybox:1.36
+      command: ["sh", "-c", "echo doing work; sleep 5; echo done; exit 0"]

@@ -1,0 +1,5 @@
+# Ubuntu 24.04 that boots systemd, so journalctl/systemctl work like a real server.
+FROM ubuntu:24.04
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y systemd systemd-sysv cron adduser procps iproute2 less nano tree && rm -rf /var/lib/apt/lists/*
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]

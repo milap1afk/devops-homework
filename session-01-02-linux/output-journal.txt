@@ -1,0 +1,102 @@
+$ cat /etc/systemd/system/hello-devops.service
+[Unit]
+Description=Hello DevOps demo service
+
+[Service]
+ExecStart=/usr/local/bin/hello-devops.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
+$ systemctl enable --now hello-devops.service
+Created symlink /etc/systemd/system/multi-user.target.wants/hello-devops.service → /etc/systemd/system/hello-devops.service.
+
+$ systemctl status hello-devops --no-pager | head -8
+● hello-devops.service - Hello DevOps demo service
+     Loaded: loaded (/etc/systemd/system/hello-devops.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2026-10-07 06:08:53 UTC; 6s ago
+   Main PID: 450 (hello-devops.sh)
+      Tasks: 2 (limit: 5832)
+     Memory: 544.0K (peak: 1.1M)
+        CPU: 32ms
+     CGroup: /docker/bc5602ac0b37445d9d7809e394d9fc7864dd196922b7fb73358669fcd26dc2a1/system.slice/hello-devops.service
+
+# ---- system logs ----
+$ journalctl --no-pager -n 10                 # last 10 lines of the whole system journal
+Oct 07 06:08:55 devops-lab hello-devops.sh[450]: hello-devops heartbeat #3
+Oct 07 06:08:55 devops-lab hello-devops.sh[450]: WARNING: slow response on beat 3
+Oct 07 06:08:55 devops-lab systemd-resolved[72]: Clock change detected. Flushing caches.
+Oct 07 06:08:55 devops-lab hello-devops.sh[450]: hello-devops heartbeat #4
+Oct 07 06:08:56 devops-lab hello-devops.sh[450]: hello-devops heartbeat #5
+Oct 07 06:08:56 devops-lab hello-devops.sh[450]: ERROR: simulated failure on beat 5
+Oct 07 06:08:58 devops-lab hello-devops.sh[450]: hello-devops heartbeat #6
+Oct 07 06:08:58 devops-lab hello-devops.sh[450]: WARNING: slow response on beat 6
+Oct 07 06:08:59 devops-lab hello-devops.sh[450]: hello-devops heartbeat #7
+Oct 07 06:09:00 devops-lab hello-devops.sh[450]: hello-devops heartbeat #8
+
+$ journalctl --list-boots --no-pager
+IDX BOOT ID                          FIRST ENTRY                 LAST ENTRY
+  0 687bfed549484ea98f768c1c73c92edc Wed 2026-10-07 06:08:52 UTC Wed 2026-10-07 06:09:00 UTC
+
+$ journalctl -b --no-pager | head -5          # logs from current boot
+Oct 07 06:08:52 devops-lab systemd-journald[23]: System Journal (/var/log/journal/201574b016774b4baf458e2536cf7255) is 8.0M, max 3.9G, 3.8G free.
+Oct 07 06:08:52 devops-lab systemd-journald[23]: Received client request to rotate journal, rotating.
+Oct 07 06:08:52 devops-lab systemd-journald[23]: Vacuuming done, freed 0B of archived journals from /var/log/journal/201574b016774b4baf458e2536cf7255.
+Oct 07 06:08:52 devops-lab systemd[1]: Reloading requested from client PID 413 ('systemctl') (unit init.scope)...
+Oct 07 06:08:52 devops-lab systemd[1]: Reloading...
+
+$ journalctl -p err --no-pager -n 5           # only priority err and worse
+Oct 07 06:08:56 devops-lab hello-devops.sh[450]: ERROR: simulated failure on beat 5
+
+$ journalctl --since "5 minutes ago" --no-pager | tail -3
+Oct 07 06:08:58 devops-lab hello-devops.sh[450]: WARNING: slow response on beat 6
+Oct 07 06:08:59 devops-lab hello-devops.sh[450]: hello-devops heartbeat #7
+Oct 07 06:09:00 devops-lab hello-devops.sh[450]: hello-devops heartbeat #8
+
+$ journalctl --disk-usage
+Archived and active journals take up 16.0M in the file system.
+
+# ---- logs for ONE service ----
+$ journalctl -u hello-devops --no-pager -n 8
+Oct 07 06:08:55 devops-lab hello-devops.sh[450]: WARNING: slow response on beat 3
+Oct 07 06:08:55 devops-lab hello-devops.sh[450]: hello-devops heartbeat #4
+Oct 07 06:08:56 devops-lab hello-devops.sh[450]: hello-devops heartbeat #5
+Oct 07 06:08:56 devops-lab hello-devops.sh[450]: ERROR: simulated failure on beat 5
+Oct 07 06:08:58 devops-lab hello-devops.sh[450]: hello-devops heartbeat #6
+Oct 07 06:08:58 devops-lab hello-devops.sh[450]: WARNING: slow response on beat 6
+Oct 07 06:08:59 devops-lab hello-devops.sh[450]: hello-devops heartbeat #7
+Oct 07 06:09:00 devops-lab hello-devops.sh[450]: hello-devops heartbeat #8
+
+$ journalctl -u hello-devops -p warning --no-pager -n 4      # warning and worse
+Oct 07 06:08:55 devops-lab hello-devops.sh[450]: WARNING: slow response on beat 3
+Oct 07 06:08:56 devops-lab hello-devops.sh[450]: ERROR: simulated failure on beat 5
+Oct 07 06:08:58 devops-lab hello-devops.sh[450]: WARNING: slow response on beat 6
+
+$ journalctl -u hello-devops -p err --no-pager               # errors only
+Oct 07 06:08:56 devops-lab hello-devops.sh[450]: ERROR: simulated failure on beat 5
+
+$ journalctl -u hello-devops -o short-iso --no-pager -n 2
+2026-10-07T06:08:59+00:00 devops-lab hello-devops.sh[450]: hello-devops heartbeat #7
+2026-10-07T06:09:00+00:00 devops-lab hello-devops.sh[450]: hello-devops heartbeat #8
+
+$ journalctl -u hello-devops -o json-pretty --no-pager -n 1 | grep -E "MESSAGE\"|_PID|_SYSTEMD_UNIT|PRIORITY"
+	"PRIORITY" : "6",
+	"MESSAGE" : "hello-devops heartbeat #8",
+	"_PID" : "450",
+	"_SYSTEMD_UNIT" : "hello-devops.service",
+
+$ journalctl -u cron --no-pager -n 3
+-- No entries --
+
+$ timeout 3 journalctl -u hello-devops -n 2 -f --no-pager    # -f follows live, like tail -f
+Oct 07 06:08:59 devops-lab hello-devops.sh[450]: hello-devops heartbeat #7
+Oct 07 06:09:00 devops-lab hello-devops.sh[450]: hello-devops heartbeat #8
+Oct 07 06:09:01 devops-lab hello-devops.sh[450]: hello-devops heartbeat #9
+Oct 07 06:09:01 devops-lab hello-devops.sh[450]: WARNING: slow response on beat 9
+Oct 07 06:09:02 devops-lab hello-devops.sh[450]: hello-devops heartbeat #10
+Oct 07 06:09:02 devops-lab hello-devops.sh[450]: ERROR: simulated failure on beat 10
+
+$ systemctl disable --now hello-devops.service
+Removed "/etc/systemd/system/multi-user.target.wants/hello-devops.service".
+

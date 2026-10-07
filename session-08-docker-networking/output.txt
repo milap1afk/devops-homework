@@ -1,0 +1,155 @@
+################ Task 1: container networking ################
+$ docker network create frontend-net
+4f5dd819de0ed89397c682f5672f0de1980b12097da6e9004792aafaf2e5caa7
+
+$ docker network create backend-net
+5a9c4dc6b63f83138d636a66d76676faf5c5030121a3540109acea8c28a2e7a3
+
+$ docker network create isolated-net
+14f91881332df38df02f563158bc7e8d9d29bf0981d783cd8512ccc31e8d4015
+
+$ docker network ls --filter name=-net
+NETWORK ID     NAME           DRIVER    SCOPE
+5a9c4dc6b63f   backend-net    bridge    local
+4f5dd819de0e   frontend-net   bridge    local
+14f91881332d   isolated-net   bridge    local
+
+$ docker run -d --name database --network backend-net -e MYSQL_ROOT_PASSWORD=devops123 -e MYSQL_DATABASE=shop mysql:8.4
+2c6f57c7b761c1c3171e54c45120b3fedcd64a50b05bd841445728d29c0183a8
+
+$ docker run -d --name backend --network frontend-net alpine:3.20 sleep infinity
+4a4a1ae9a5b20231d60633505df5f03c93c119e1c8753cff6941afd8be56d62b
+
+# Attach backend to a SECOND network -> backend is on frontend-net AND backend-net
+$ docker network connect backend-net backend
+
+$ docker run -d --name frontend --network frontend-net nginx:alpine
+ccf4039e2db4a0a73b0e5395d074dd651306ff7497da8784928fded00b3e29d4
+
+$ docker run -d --name intruder --network isolated-net alpine:3.20 sleep infinity
+c101c64d5bda244d0e79a1b54c626525daf61b38e6c9e4e0dcbdcfd7ff7e6dfb
+
+$ docker inspect backend --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}={{$v.IPAddress}} {{end}}'
+backend-net=172.19.0.3 frontend-net=172.18.0.2 
+
+$ docker network inspect frontend-net --format '{{range .Containers}}{{.Name}} {{end}}'
+backend frontend 
+
+$ docker network inspect backend-net --format '{{range .Containers}}{{.Name}} {{end}}'
+database backend 
+
+$ docker network inspect isolated-net --format '{{range .Containers}}{{.Name}} {{end}}'
+intruder 
+
+# Waiting for MySQL to accept connections...
+# frontend -> backend (same network: frontend-net)  => should WORK
+$ docker exec frontend ping -c 2 backend
+PING backend (172.18.0.2): 56 data bytes
+64 bytes from 172.18.0.2: seq=0 ttl=64 time=0.755 ms
+64 bytes from 172.18.0.2: seq=1 ttl=64 time=0.064 ms
+
+--- backend ping statistics ---
+2 packets transmitted, 2 packets received, 0% packet loss
+round-trip min/avg/max = 0.064/0.409/0.755 ms
+
+# backend -> database (same network: backend-net)  => should WORK
+$ docker exec backend ping -c 2 database
+PING database (172.19.0.2): 56 data bytes
+64 bytes from 172.19.0.2: seq=0 ttl=64 time=0.373 ms
+64 bytes from 172.19.0.2: seq=1 ttl=64 time=0.205 ms
+
+--- database ping statistics ---
+2 packets transmitted, 2 packets received, 0% packet loss
+round-trip min/avg/max = 0.205/0.289/0.373 ms
+
+$ docker exec backend nc -zv -w 3 database 3306
+database (172.19.0.2:3306) open
+
+# frontend -> database (no shared network)  => should FAIL
+$ docker exec frontend ping -c 2 -W 2 database
+ping: bad address 'database'
+
+# intruder (isolated-net) -> backend  => should FAIL
+$ docker exec intruder ping -c 2 -W 2 backend
+ping: bad address 'backend'
+
+$ docker exec database mysql -uroot -pdevops123 -e "SHOW DATABASES;"
+mysql: [Warning] Using a password on the command line interface can be insecure.
+Database
+information_schema
+mysql
+performance_schema
+shop
+sys
+
+################ Task 2: host network ################
+$ docker pull -q ubuntu/apache2:latest
+docker.io/ubuntu/apache2:latest
+
+$ docker run -d --name apache2-host --network host ubuntu/apache2:latest
+2e0a9b8a92a17594e40a2f4f3f03586316d3a5547601f66b4230fe4a0cb22bbe
+
+# No -p mapping: with --network host, Apache binds port 80 of the Docker host directly
+$ docker inspect apache2-host --format 'NetworkMode={{.HostConfig.NetworkMode}} PortBindings={{.HostConfig.PortBindings}}'
+NetworkMode=host PortBindings=map[]
+
+# On the Docker host (the Colima Linux VM):
+$ colima ssh -- sh -c 'sudo ss -ltnp | grep ":80 "'
+LISTEN 0      511                                   *:80               *:*    users:(("apache2",pid=10407,fd=4),("apache2",pid=10406,fd=4),("apache2",pid=10405,fd=4))
+
+$ colima ssh -- curl -s http://localhost:80 | grep -o '<title>.*</title>'
+<title>Apache2 Ubuntu Default Page: It works</title>
+
+# And from the Mac (Colima forwards the VM's port 80 to localhost):
+$ curl -s http://localhost:80 | grep -o '<title>.*</title>'
+<title>Apache2 Ubuntu Default Page: It works</title>
+
+################ Task 3: bind mount ################
+$ cat bind-mount-site/index.html
+Hello students
+
+$ docker run -d --name nginx-bind -p 8090:80 -v "$PWD/bind-mount-site":/usr/share/nginx/html:ro nginx:alpine
+9b05e3af154ce5851cabb677741fd1e6f753687b83a711f6e9a0bdc9d0832a95
+
+$ curl -s http://localhost:8090
+Hello students
+
+$ docker inspect nginx-bind --format '{{range .Mounts}}{{.Type}}: {{.Source}} -> {{.Destination}} (RW={{.RW}}){{end}}'
+bind: /Users/milapkothari/Desktop/devops-homework/session-08-docker-networking/bind-mount-site -> /usr/share/nginx/html (RW=false)
+
+# Edit the file on the HOST only. No restart, no docker cp.
+$ echo "Hello students - updated live from the host at $(date +%H:%M:%S)" > bind-mount-site/index.html
+
+$ curl -s http://localhost:8090
+Hello students - updated live from the host at 11:36:27
+
+$ docker ps --filter name=nginx-bind --format '{{.Names}} {{.Status}}'
+nginx-bind Up 3 seconds
+
+################ Task 4: overlay network ################
+$ docker swarm init --advertise-addr 127.0.0.1 >/dev/null 2>&1; docker info --format "Swarm: {{.Swarm.LocalNodeState}}"
+Swarm: active
+
+$ docker network create -d overlay --attachable demo-overlay
+cxttfnqhf1ngndg43shir7hhm
+
+$ docker network ls --filter driver=overlay
+NETWORK ID     NAME           DRIVER    SCOPE
+cxttfnqhf1ng   demo-overlay   overlay   swarm
+pkz1ddaz8p5l   ingress        overlay   swarm
+
+$ docker network inspect demo-overlay --format 'Driver={{.Driver}} Scope={{.Scope}} Subnet={{range .IPAM.Config}}{{.Subnet}}{{end}}'
+Driver=overlay Scope=swarm Subnet=10.0.1.0/24
+
+$ docker service create -q --name web --replicas 2 --network demo-overlay nginx:alpine
+0b1egqm5dlsgqwseeh325nwc4
+
+$ docker service ps web --format "{{.Name}} {{.CurrentState}}"
+web.1 Running 5 seconds ago
+web.2 Running 5 seconds ago
+
+$ docker run --rm --network demo-overlay alpine:3.20 sh -c "nslookup tasks.web 2>/dev/null | grep Address | tail -2; wget -qO- http://web | grep -o \"<title>.*</title>\""
+Address: 10.0.1.3
+Address: 10.0.1.4
+<title>Welcome to nginx!</title>
+
