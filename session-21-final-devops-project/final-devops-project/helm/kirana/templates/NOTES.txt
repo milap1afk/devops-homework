@@ -1,4 +1,4 @@
-Kirana {{ .Values.image.tag | default .Chart.AppVersion }} deployed as release "{{ .Release.Name }}".
-  API:     http://{{ .Values.ingress.host }}/health   (Ingress, class {{ .Values.ingress.className }})
-  Metrics: /metrics (ServiceMonitor {{ ternary "enabled" "disabled" .Values.monitoring.serviceMonitor }})
-  Balance: curl http://{{ .Values.ingress.host }}/balance/Ramesh
+Kirana {{ .Chart.AppVersion }} deployed as release "{{ .Release.Name }}".
+  UI:      http://{{ .Values.ingress.host }}/
+  API:     http://{{ .Values.ingress.host }}/api/entries   (docs: /docs on the backend Service)
+  Metrics: backend /metrics (ServiceMonitor {{ ternary "enabled" "disabled" .Values.monitoring.serviceMonitor }})

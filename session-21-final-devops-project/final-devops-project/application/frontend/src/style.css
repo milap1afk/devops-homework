@@ -1,0 +1,31 @@
+:root { --green: #2e7d32; --red: #c62828; --bg: #f5f5f0; --card: #fff; --text: #1d1d1b; --muted: #6b6b66; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, "Noto Sans Devanagari", sans-serif; background: var(--bg); color: var(--text); }
+header { background: var(--green); color: #fff; padding: 16px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+header h1 { margin: 0; font-size: 1.4rem; }
+header .muted { color: #d7ecd8; }
+main { max-width: 720px; margin: 0 auto; padding: 12px; display: grid; gap: 12px; }
+.card { background: var(--card); border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+h2 { margin: 0 0 12px; font-size: 1.1rem; }
+form { display: grid; gap: 10px; }
+input { font-size: 1rem; padding: 12px; border: 1px solid #ccc; border-radius: 8px; width: 100%; }
+.types { display: flex; gap: 8px; flex-wrap: wrap; }
+.types label { flex: 1 1 30%; border: 1px solid #ccc; border-radius: 8px; padding: 10px; text-align: center; cursor: pointer; }
+.types input { width: auto; }
+button { font-size: 1rem; padding: 12px 16px; border: 0; border-radius: 8px; background: var(--green); color: #fff; cursor: pointer; min-height: 44px; }
+button.secondary { background: #e8e8e3; color: var(--text); }
+button.danger { background: var(--red); }
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.list li { display: flex; align-items: center; gap: 8px; justify-content: space-between; border-bottom: 1px solid #eee; padding: 8px 0; flex-wrap: wrap; }
+.amt { font-weight: 700; }
+.udhar { color: var(--red); } .payment { color: var(--green); } .sale { color: var(--muted); }
+.msg { margin: 0; min-height: 1.2em; }
+.muted { color: var(--muted); font-size: .9rem; }
+.empty { color: var(--muted); }
+
+/* phone widths: never wider than the screen */
+main { grid-template-columns: minmax(0, 1fr); }
+.card { min-width: 0; }
+.types label { flex: 1 1 0; min-width: 0; padding: 10px 4px; font-size: .9rem; }
+.list li > span:first-child { flex: 1 1 8rem; min-width: 0; overflow-wrap: anywhere; }
+.list li button { padding: 8px 10px; min-height: 40px; font-size: .9rem; }

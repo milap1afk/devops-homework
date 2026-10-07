@@ -1,0 +1,96 @@
+# ================ 1. DEPLOY ================
+$ kubectl -n s14-mini apply -f mini-project/deployment.yaml -f mini-project/service.yaml
+deployment.apps/troubleshooting-app created
+service/troubleshooting-service created
+
+$ kubectl -n s14-mini rollout status deploy/troubleshooting-app --timeout=180s
+Waiting for deployment "troubleshooting-app" rollout to finish: 0 out of 2 new replicas have been updated...
+Waiting for deployment "troubleshooting-app" rollout to finish: 0 of 2 updated replicas are available...
+Waiting for deployment "troubleshooting-app" rollout to finish: 1 of 2 updated replicas are available...
+deployment "troubleshooting-app" successfully rolled out
+
+$ kubectl -n s14-mini get pods
+NAME                                   READY   STATUS    RESTARTS   AGE
+troubleshooting-app-59d4957864-kwwxr   1/1     Running   0          28s
+troubleshooting-app-59d4957864-q68z5   1/1     Running   0          28s
+
+$ kubectl -n s14-mini get service
+NAME                      TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
+troubleshooting-service   ClusterIP   10.110.212.243   <none>        80/TCP    29s
+
+# ================ 2. CHECK THE APPLICATION ================
+$ kubectl -n s14-mini get pods -o wide
+NAME                                   READY   STATUS    RESTARTS   AGE   IP            NODE       NOMINATED NODE   READINESS GATES
+troubleshooting-app-59d4957864-kwwxr   1/1     Running   0          28s   10.244.0.56   minikube   <none>           <none>
+troubleshooting-app-59d4957864-q68z5   1/1     Running   0          28s   10.244.0.57   minikube   <none>           <none>
+
+$ kubectl -n s14-mini describe pod troubleshooting-app-59d4957864-kwwxr | sed -n '1,9p;/^    Image:/p;/^    State:/,/^    Ready:/p;/^Conditions:/,/^Volumes:/p;/^Events:/,$p' | grep -v '^Volumes:'
+Name:             troubleshooting-app-59d4957864-kwwxr
+Namespace:        s14-mini
+Priority:         0
+Service Account:  default
+Node:             minikube/192.168.49.2
+Start Time:       Wed, 07 Oct 2026 14:45:10 +0530
+Labels:           app=troubleshooting-app
+                  pod-template-hash=59d4957864
+Annotations:      <none>
+    Image:          nginx:1.27
+    State:          Running
+      Started:      Wed, 07 Oct 2026 14:45:32 +0530
+    Ready:          True
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       True 
+  ContainersReady             True 
+  PodScheduled                True 
+Events:
+  Type    Reason     Age   From               Message
+  ----    ------     ----  ----               -------
+  Normal  Scheduled  28s   default-scheduler  Successfully assigned s14-mini/troubleshooting-app-59d4957864-kwwxr to minikube
+  Normal  Pulled     11s   kubelet            spec.containers{app}: Container image "nginx:1.27" already present on machine and can be accessed by the pod
+  Normal  Created    9s    kubelet            spec.containers{app}: Container created
+  Normal  Started    5s    kubelet            spec.containers{app}: Container started
+
+$ kubectl -n s14-mini logs troubleshooting-app-59d4957864-kwwxr --tail=4
+/docker-entrypoint.sh: Sourcing /docker-entrypoint.d/15-local-resolvers.envsh
+/docker-entrypoint.sh: Launching /docker-entrypoint.d/20-envsubst-on-templates.sh
+/docker-entrypoint.sh: Launching /docker-entrypoint.d/30-tune-worker-processes.sh
+/docker-entrypoint.sh: Configuration complete; ready for start up
+
+$ kubectl -n s14-mini exec troubleshooting-app-59d4957864-kwwxr -- curl -s localhost | grep -E '<title>|<h1>'   # (README: exec -it ... -- bash, then curl localhost)
+<title>Welcome to nginx!</title>
+<h1>Welcome to nginx!</h1>
+
+# ================ 3-4. CHECK THE SERVICE AND ENDPOINTS ================
+$ kubectl -n s14-mini describe service troubleshooting-service | grep -E '^(Name|Selector|Type|IP|Port|TargetPort|Endpoints):'
+Name:                     troubleshooting-service
+Selector:                 app=troubleshooting-app
+Type:                     ClusterIP
+IP:                       10.110.212.243
+Port:                     <unset>  80/TCP
+TargetPort:               80/TCP
+Endpoints:                10.244.0.57:80,10.244.0.56:80
+
+$ kubectl -n s14-mini get endpoints troubleshooting-service
+Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
+NAME                      ENDPOINTS                       AGE
+troubleshooting-service   10.244.0.56:80,10.244.0.57:80   42s
+
+$ kubectl -n s14-mini get endpointslices -l kubernetes.io/service-name=troubleshooting-service
+NAME                            ADDRESSTYPE   PORTS   ENDPOINTS                 AGE
+troubleshooting-service-kz8b8   IPv4          80      10.244.0.57,10.244.0.56   42s
+
+$ probe 'wget -qO- -T 3 http://troubleshooting-service | grep -o "<title>.*</title>"'
+<title>Welcome to nginx!</title>
+
+# ================ 5. CREATE A BROKEN POD ================
+$ kubectl -n s14-mini apply -f mini-project/broken-pod.yaml
+pod/project-broken-pod created
+
+Unable to connect to the server: net/http: TLS handshake timeout
+Unable to connect to the server: net/http: TLS handshake timeout
+error: Get "https://127.0.0.1:32771/api/v1/namespaces/s14-mini/pods/project-broken-pod": net/http: TLS handshake timeout - error from a previous attempt: http2: client connection lost
+Unable to connect to the server: net/http: TLS handshake timeout
+Unable to connect to the server: net/http: TLS handshake timeout

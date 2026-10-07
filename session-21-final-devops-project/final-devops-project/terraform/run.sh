@@ -8,6 +8,6 @@ export TF_IN_AUTOMATION=1 TF_CLI_ARGS="-no-color" CHECKPOINT_DISABLE=1
 run 'terraform init | grep -E "Installed|successfully"'
 run 'terraform fmt -check -recursive && echo "fmt: OK"'
 run 'terraform validate'
-run 'terraform plan -input=false -out=final.tfplan | grep -E "^  # |^Plan:"'
+run 'terraform plan -input=false -var-file=terraform.tfvars.example -out=final.tfplan | grep -E "^  # |^Plan:"'
 } > output.txt 2>&1
 rm -f final.tfplan

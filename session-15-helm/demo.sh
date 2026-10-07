@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Session 15: Helm commands + rollback workflow on minikube. Usage: ./demo.sh [commands|rollback]
+# Session 15: Helm commands + rollback workflow on minikube. Usage: ./demo.sh [commands|rollback|mini]
 cd "$(dirname "$0")"
 run() { echo "\$ $*"; eval "$@" 2>&1; echo; }
 NS=s15
@@ -100,6 +100,67 @@ rollback() {
   for i in $(seq 30); do page | grep -q 'version: v2' && break; sleep 4; done
   run 'page'
   echo "# Note: rollback created a NEW revision (4) that is a copy of revision 2; history is never rewritten."
+}
+
+mini() {
+  MP=mini-project; C=$MP/notes-chart; NS=s15-mini; R=notes-dev; N="kubectl -n $NS"
+  helm uninstall $R -n $NS >/dev/null 2>&1; kubectl delete ns $NS --ignore-not-found --wait --timeout=180s >/dev/null 2>&1; kubectl create ns $NS >/dev/null
+  $N run curl --image=curlimages/curl:8.10.1 --restart=Never --command -- sleep infinity >/dev/null; $N wait --for=condition=Ready pod/curl --timeout=180s >/dev/null
+  IP=$(minikube ip)
+  check() {  # what the app serves (via the NodePort) and what config it got
+    echo "\$ curl -sI http://$IP:30090 (NodePort)  +  env from the ConfigMap"
+    $N exec curl -- curl -sI -m 5 http://$IP:30090 | grep -iE '^(HTTP|Server)' | tr -d '\r'
+    $N exec deploy/$R-deploy -- sh -c 'echo APP_NAME=$APP_NAME ENVIRONMENT=$ENVIRONMENT'; echo
+  }
+  echo "################ Steps 1-7: the chart ################"
+  run "find $C -type f | sort"
+  run "cat $C/values.yaml"
+  run "diff $C/values.yaml $C/values-prod.yaml"
+  echo "################ Step 8: lint ################"
+  run "helm lint $C"
+  echo "################ Step 9: render locally ################"
+  run "helm template $R $C"
+  run "helm template $R $C | grep -c '{{' || echo 'no unrendered {{ }} left'"
+  echo "################ Step 10: install (development) ################"
+  run "helm install $R $C -n $NS --wait --timeout 4m"
+  run "$N get pods -l app=$R"
+  run "$N get services"
+  run "$N get configmaps"
+  run 'check'
+  echo "################ Step 11: upgrade to production values ################"
+  run "helm upgrade $R $C -n $NS -f $C/values-prod.yaml --wait --timeout 4m"
+  run "$N get pods -l app=$R"
+  run "$N get deploy $R-deploy -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,IMAGE:.spec.template.spec.containers[0].image,ENV-LABEL:.metadata.labels.environment"
+  run "$N get configmap $R-config -o jsonpath='{.data}'; echo"
+  run 'check'
+  echo "################ Step 12: release history ################"
+  run "helm history $R -n $NS"
+  echo "################ Step 13: simulate a bad upgrade (exactly the course command, no --wait) ################"
+  run "helm upgrade $R $C -n $NS --set image.tag=broken-tag-does-not-exist"
+  for i in $(seq 40); do $N get pods -l app=$R --no-headers | grep -qE 'ImagePullBackOff' && break; sleep 3; done
+  run "$N get pods -l app=$R"
+  run "helm history $R -n $NS"
+  run "helm get values $R -n $NS"
+  run "$N get deploy $R-deploy -o custom-columns=NAME:.metadata.name,DESIRED:.spec.replicas,READY:.status.readyReplicas,IMAGE:.spec.template.spec.containers[0].image"
+  run "$N get configmap $R-config -o jsonpath='{.data}'; echo"
+  P=$($N get pods -l app=$R --no-headers | awk '/ImagePullBackOff|ErrImagePull/{print $1; exit}')
+  run "$N events --for pod/$P --types=Warning | tail -3 | cut -c1-200"
+  echo "################ Step 14: rollback to revision 2 ################"
+  run "helm rollback $R 2 -n $NS --wait --timeout 4m"
+  for i in $(seq 40); do n=$($N get pods -l app=$R --no-headers 2>/dev/null | grep -vc ' Running '); [ "$n" = 0 ] && break; sleep 3; done
+  run "$N get pods -l app=$R"
+  run "helm history $R -n $NS"
+  run "helm get values $R -n $NS"
+  run "$N get configmap $R-config -o jsonpath='{.data}'; echo"
+  run 'check'
+  echo "################ Step 15: clean up ################"
+  run "helm uninstall $R -n $NS --wait"
+  run "helm list -n $NS"
+  $N wait --for=delete pod -l app=$R --timeout=120s >/dev/null 2>&1
+  run "$N get pods -l app=$R"
+  run "$N get services"
+  run "$N get configmaps"
+  kubectl delete ns $NS --wait=false >/dev/null
 }
 
 parts=${1:-"commands rollback"}

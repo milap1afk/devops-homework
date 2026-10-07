@@ -2,18 +2,15 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: kirana-api
+  name: kirana-backend
   labels:
     app.kubernetes.io/name: kirana
     app.kubernetes.io/instance: kirana
-    app.kubernetes.io/version: "1.0.2"
+    app.kubernetes.io/part-of: kirana
     app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: kirana-1.0.2
+    helm.sh/chart: kirana-2.0.0
 spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: kirana-api
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: kirana-backend }
   minReplicas: 2
   maxReplicas: 3
   metrics:
@@ -21,3 +18,23 @@ spec:
       resource:
         name: cpu
         target: { type: Utilization, averageUtilization: 60 }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: kirana-frontend
+  labels:
+    app.kubernetes.io/name: kirana
+    app.kubernetes.io/instance: kirana
+    app.kubernetes.io/part-of: kirana
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: kirana-2.0.0
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: kirana-frontend }
+  minReplicas: 2
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }

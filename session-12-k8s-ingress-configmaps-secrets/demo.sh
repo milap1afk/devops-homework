@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Session 12 demo on minikube. Usage: ./demo.sh [configmap|secret|ingress]
+# Session 12 demo on minikube. Usage: ./demo.sh [configmap|secret|ingress|troubleshooting]
 cd "$(dirname "$0")"
 run() { echo "\$ $*"; eval "$@" 2>&1; echo; }
-kubectl get ns s12 >/dev/null 2>&1 || kubectl create ns s12 >/dev/null
+[ "${1:-}" = troubleshooting ] || { kubectl get ns s12 >/dev/null 2>&1 || kubectl create ns s12 >/dev/null; }
 
 configmap() {
   kubectl -n s12 delete pod configmap-demo --ignore-not-found --now >/dev/null; kubectl -n s12 delete cm app-config --ignore-not-found >/dev/null
@@ -79,6 +79,58 @@ ingress() {
   kill $PF; wait $PF 2>/dev/null
   echo "# ---- Controller logs prove the requests went through ingress-nginx ----"
   run "kubectl -n ingress-nginx logs deploy/ingress-nginx-controller --tail=50 | grep -E 's12-(shop|blog)-svc' | tail -3 | sed -E 's/^[0-9.]+ /<client-ip> /'"
+}
+
+troubleshooting() {
+  T=05-troubleshooting; N="kubectl -n s12-ts"
+  kubectl delete ns s12-ts --ignore-not-found --wait --timeout=180s >/dev/null 2>&1
+  applog() { $N logs deploy/yatri-backend --tail=${1:-3}; }
+  echo "################ SETUP: PostgreSQL (correct password) + backend that logs in every 5s ################"
+  run "kubectl apply -f $T/postgres.yaml"
+  run "$N rollout status deploy/yatri-postgres --timeout=240s"
+  run "kubectl apply -f $T/broken-secret.yaml -f $T/app.yaml"
+  $N rollout status deploy/yatri-backend --timeout=180s >/dev/null; sleep 12
+  echo "################ 1. IDENTIFY THE PROBLEM ################"
+  echo "# Every Pod is Running and Ready, nothing restarts -> 'kubectl get pods' looks healthy:"
+  run "$N get pods"
+  echo "# ...but the backend cannot log in to the database:"
+  run 'applog 3'
+  echo "################ 2. TROUBLESHOOTING COMMANDS ################"
+  echo "# The server side confirms it is a credential problem, not networking/DNS (the connection reached Postgres):"
+  run "$N logs deploy/yatri-postgres --tail=40 | grep -A1 'password authentication failed' | tail -2"
+  echo "# Which Secret/key does the app use?"
+  run "$N get deploy yatri-backend -o jsonpath='{range .spec.template.spec.containers[0].env[*]}{.name}{\" <- \"}{.valueFrom.secretKeyRef.name}{\"/\"}{.valueFrom.secretKeyRef.key}{\"\\n\"}{end}'"
+  echo "# describe hides values but shows SIZES: 'secretpassword' is 14 characters, the Secret holds 15 bytes"
+  run "$N describe secret yatri-db-secret | sed -n '/^Data/,\$p'"
+  run "$N get secret yatri-db-secret -o jsonpath='{.data.POSTGRES_PASSWORD}'; echo"
+  run "$N get secret yatri-db-secret -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d | xxd"
+  echo "# compare with the password the database server was created with:"
+  run "$N get secret postgres-server-secret -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d | xxd"
+  echo "# and what the running container actually received (length of the env var):"
+  run "$N exec deploy/yatri-backend -- sh -c 'echo PGPASSWORD length: \${#PGPASSWORD}'"
+  echo "# reproduce how the value was produced:"
+  run 'echo "secretpassword" | xxd'
+  run 'echo "secretpassword" | base64'
+  run 'echo -n "secretpassword" | base64'
+  echo "################ 3. ROOT CAUSE ################"
+  echo "# The password was encoded with 'echo \"secretpassword\" | base64'. echo appends a newline (0x0a), so the Secret"
+  echo "# stores 'secretpassword\\n' (15 bytes, base64 ending in 'K' instead of '='). The app sends that exact string,"
+  echo "# Postgres compares it with 'secretpassword' and rejects it: password authentication failed."
+  echo "################ 4. FIX ################"
+  run "diff $T/broken-secret.yaml $T/fixed-secret.yaml"
+  run "kubectl apply -f $T/fixed-secret.yaml"
+  run "$N describe secret yatri-db-secret | sed -n '/^Data/,\$p'"
+  sleep 10
+  echo "# The Secret is fixed, but the app STILL fails: env vars are copied into the container only when it starts"
+  run 'applog 2'
+  run "$N rollout restart deploy/yatri-backend && $N rollout status deploy/yatri-backend --timeout=180s"
+  sleep 12
+  echo "################ 5. VERIFY (after) ################"
+  run "$N get pods"
+  run 'applog 3'
+  run "$N exec deploy/yatri-backend -- sh -c 'echo PGPASSWORD length: \${#PGPASSWORD}'"
+  run "$N logs deploy/yatri-postgres --since=20s | grep -c 'password authentication failed' || true"
+  kubectl delete ns s12-ts --wait=false >/dev/null
 }
 
 parts=${1:-"configmap secret ingress"}

@@ -6,18 +6,18 @@ metadata:
   labels:
     app.kubernetes.io/name: kirana
     app.kubernetes.io/instance: kirana
-    app.kubernetes.io/version: "1.0.2"
+    app.kubernetes.io/part-of: kirana
     app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: kirana-1.0.2
+    helm.sh/chart: kirana-2.0.0
 spec:
   ingressClassName: nginx
   rules:
     - host: kirana.local
       http:
         paths:
-          - path: /
+          - path: /api               # API calls -> FastAPI backend
             pathType: Prefix
-            backend:
-              service:
-                name: kirana-api
-                port: { name: http }
+            backend: { service: { name: kirana-backend, port: { name: http } } }
+          - path: /                  # everything else -> web UI
+            pathType: Prefix
+            backend: { service: { name: kirana-frontend, port: { name: http } } }

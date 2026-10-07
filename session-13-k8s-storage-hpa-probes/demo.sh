@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Session 13 demo on minikube. Usage: ./demo.sh [volumes|hpa]
+# Session 13 demo on minikube. Usage: ./demo.sh [volumes|hpa|mini|coursehpa]
 cd "$(dirname "$0")"
 run() { echo "\$ $*"; eval "$@" 2>&1; echo; }
-kubectl get ns s13 >/dev/null 2>&1 || kubectl create ns s13 >/dev/null
+case "${1:-}" in mini|coursehpa) ;; *) kubectl get ns s13 >/dev/null 2>&1 || kubectl create ns s13 >/dev/null;; esac
 E=01-kubernetes-volumes/examples
 
 volumes() {
@@ -103,6 +103,135 @@ hpa() {
   run 'kubectl -n s13 get hpa'
   run "kubectl -n s13 describe hpa php-apache | sed -n '/^Events:/,\$p'"
   run 'kubectl -n s13 get pods -l run=php-apache'
+}
+
+hpaline() { kubectl -n $1 get hpa $2 --no-headers | awk '{print $3, $4, $5, $6}'; }
+
+mini() {
+  M=03-mini-project; N="kubectl -n s13-mini"
+  kubectl delete ns s13-mini --ignore-not-found --wait --timeout=180s >/dev/null 2>&1
+  echo "################ 5.1 Namespace ################"
+  run "kubectl apply -f $M/namespace.yaml"
+  echo "################ 5.2 PersistentVolumeClaim ################"
+  run "kubectl apply -f $M/pvc.yaml"
+  for i in $(seq 30); do [ "$($N get pvc web-data -o jsonpath='{.status.phase}')" = Bound ] && break; sleep 2; done
+  run "$N get pvc"
+  run "kubectl get storageclass"
+  echo "################ 5.3 Deployment + Service ################"
+  run "kubectl apply -f $M/deployment.yaml -f $M/service.yaml"
+  run "$N rollout status deploy/web-app --timeout=240s"
+  run "$N get pods -o wide"
+  run "$N get svc web-service && $N get endpointslices -l kubernetes.io/service-name=web-service"
+  P=$($N get pod -l app=web-app -o jsonpath='{.items[0].metadata.name}')
+  run "$N describe pod $P | grep -E '^    (Startup|Readiness|Liveness):|Requests:|Limits:|cpu:|memory:|/data from'"
+  echo "################ 5.4 HorizontalPodAutoscaler ################"
+  run "kubectl apply -f $M/hpa.yaml"
+  echo "# waiting for metrics-server to report CPU for the Pods..."
+  for i in $(seq 40); do $N get hpa web-app-hpa --no-headers | grep -q 'cpu: [0-9]' && break; sleep 5; done
+  run "$N get hpa"
+  run "$N top pods"
+
+  echo "################ Task 1: storage persistence ################"
+  run "$N exec $P -- sh -c 'echo \"Student: Milap Kothari\" > /data/student.txt'"
+  run "$N exec $P -- cat /data/student.txt"
+  P2=$($N get pod -l app=web-app -o jsonpath='{.items[1].metadata.name}')
+  run "$N exec $P2 -- cat /data/student.txt   # the 2nd replica mounts the same PVC (RWO = one NODE; minikube has one)"
+  run "$N delete pod $P"
+  $N rollout status deploy/web-app --timeout=180s >/dev/null; $N wait --for=condition=Ready pod -l app=web-app --timeout=180s >/dev/null
+  run "$N get pods"
+  NEW=$($N get pod -l app=web-app -o jsonpath='{.items[0].metadata.name}')
+  run "$N exec $NEW -- cat /data/student.txt"
+  run "kubectl get pv \$($N get pvc web-data -o jsonpath='{.spec.volumeName}') -o custom-columns=PV:.metadata.name,CAPACITY:.spec.capacity.storage,RECLAIM:.spec.persistentVolumeReclaimPolicy,HOSTPATH:.spec.hostPath.path"
+
+  echo "################ Task 2: Service verification ################"
+  $N port-forward svc/web-service 18080:80 >/dev/null 2>&1 & PF=$!; sleep 4
+  run 'curl -s http://localhost:18080 | head -4'
+  run 'curl -s -o /dev/null -w "HTTP %{http_code}\n" http://localhost:18080/'
+  kill $PF; wait $PF 2>/dev/null
+
+  echo "################ Bonus challenge 2: readiness gating (path /does-not-exist) ################"
+  run "$N patch deploy web-app --type=json -p '[{\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/readinessProbe/httpGet/path\",\"value\":\"/does-not-exist\"}]'"
+  sleep 35
+  run "$N get pods"
+  run "$N get endpoints web-service"
+  run "$N get endpointslices -l kubernetes.io/service-name=web-service -o custom-columns=NAME:.metadata.name,ADDRESSES:.endpoints[*].addresses,READY:.endpoints[*].conditions.ready"
+  P=$($N get pod -l app=web-app -o jsonpath='{.items[0].metadata.name}')
+  run "$N events --for pod/$P | grep -i readiness | tail -2"
+  echo "# revert"
+  run "kubectl apply -f $M/deployment.yaml && $N rollout status deploy/web-app --timeout=240s"
+
+  echo "################ Bonus challenge 3: liveness restart loop (path /crash) ################"
+  run "$N patch deploy web-app --type=json -p '[{\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/livenessProbe/httpGet/path\",\"value\":\"/crash\"}]'"
+  sleep 75
+  run "$N get pods"
+  P=$($N get pod -l app=web-app -o jsonpath='{.items[0].metadata.name}')
+  run "$N events --for pod/$P | grep -iE 'liveness|Killing' | tail -3"
+  echo "# revert"
+  run "kubectl apply -f $M/deployment.yaml && $N rollout status deploy/web-app --timeout=240s"
+  for i in $(seq 40); do $N get hpa web-app-hpa --no-headers | grep -q 'cpu: [0-9]' && break; sleep 5; done
+
+  echo "################ Task 3: trigger HPA scaling ################"
+  run "$N get hpa"
+  run "$N run load-generator --image=busybox:1.36 --restart=Never -- /bin/sh -c 'while true; do wget -q -O- http://web-service; done'"
+  echo "TIME    TARGETS  MIN MAX REPLICAS   | per-Pod CPU (kubectl top)"
+  T0=$(date +%s)
+  for i in $(seq 13); do
+    top=$($N top pods -l app=web-app --no-headers 2>/dev/null | awk '{printf "%s ", $2}')
+    printf "t+%-5s %s   |  %s\n" "$(( $(date +%s) - T0 ))s" "$(hpaline s13-mini web-app-hpa)" "$top"
+    sleep 20
+  done; echo
+  run "$N get hpa"
+  run "$N get pods -o wide"
+  run "$N describe hpa web-app-hpa | sed -n '/^Events:/,\$p'"
+  echo "################ Stop the load -> scale down (default 300s stabilization window) ################"
+  run "$N delete pod load-generator --now"
+  T0=$(date +%s)
+  for i in $(seq 18); do
+    printf "t+%-5s %s\n" "$(( $(date +%s) - T0 ))s" "$(hpaline s13-mini web-app-hpa)"
+    [ "$($N get deploy web-app -o jsonpath='{.spec.replicas}')" = 2 ] && [ $i -gt 2 ] && break
+    sleep 30
+  done; echo
+  run "$N get hpa"
+  run "$N describe hpa web-app-hpa | sed -n '/^Events:/,\$p'"
+  run "$N get pods"
+  kubectl delete ns s13-mini --wait=false >/dev/null
+}
+
+coursehpa() {
+  H=03-mini-project/course-hpa; NS=s13-hpa; N="kubectl -n $NS"
+  kubectl delete ns $NS --ignore-not-found --wait --timeout=180s >/dev/null 2>&1; kubectl create ns $NS >/dev/null
+  echo "################ Course hpa/ files: backend + service + HPA ################"
+  run "$N apply -f $H/backend-deployment.yaml -f $H/backend-service.yaml -f $H/hpa-backend.yaml"
+  run "$N rollout status deploy/yatri-backend --timeout=240s"
+  for i in $(seq 40); do $N get hpa yatri-backend-hpa --no-headers | grep -q 'cpu: [0-9]' && break; sleep 5; done
+  run "$N get deploy,svc,hpa"
+  echo "################ Run the course's load_generator.sh (unchanged) for ~3 minutes ################"
+  echo "# it calls 'kubectl port-forward svc/yatri-backend-service' without -n, so it runs with a private kubeconfig copy"
+  echo "# whose current namespace is $NS (the shared context is not touched)"
+  KC=$(mktemp); kubectl config view --raw > $KC; KUBECONFIG=$KC kubectl config set-context --current --namespace=$NS >/dev/null
+  echo "# Port 5000 on this Mac is already taken by macOS AirPlay Receiver (ControlCenter), so the script's default"
+  echo "# target http://localhost:5000/healthz would hit AirPlay, not Kubernetes:"
+  run 'lsof -nP -iTCP:5000 -sTCP:LISTEN | head -3'
+  run 'curl -s -o /dev/null -w "HTTP %{http_code}  server: %header{server}\n" http://localhost:5000/healthz'
+  echo "# -> forward 15000 instead and pass the URL as the script's 1st argument (its curl pre-check then succeeds"
+  echo "#    and it skips its own port-forward)"
+  KUBECONFIG=$KC kubectl port-forward svc/yatri-backend-service 15000:80 >/dev/null 2>&1 & PF=$!; sleep 4
+  run 'curl -s http://localhost:15000/healthz'
+  KUBECONFIG=$KC perl -e 'setpgrp(0,0); exec @ARGV' bash $H/load_generator.sh http://localhost:15000/healthz > $H/../.lg.log 2>&1 & LG=$!
+  sleep 5; echo "\$ cat load_generator.sh output"; cat $H/../.lg.log; echo
+  echo "TIME    TARGETS  MIN MAX REPLICAS   | per-Pod CPU (kubectl top)"
+  T0=$(date +%s)
+  for i in $(seq 10); do
+    top=$($N top pods -l app=yatri-backend --no-headers 2>/dev/null | awk '{printf "%s ", $2}')
+    printf "t+%-5s %s   |  %s\n" "$(( $(date +%s) - T0 ))s" "$(hpaline $NS yatri-backend-hpa)" "$top"
+    sleep 20
+  done; echo
+  kill -TERM -$LG 2>/dev/null; sleep 2; kill -KILL -$LG 2>/dev/null; kill $PF 2>/dev/null; rm -f $KC $H/../.lg.log
+  echo "# load generator stopped"
+  run "$N get hpa"
+  run "$N top pods"
+  run "$N describe hpa yatri-backend-hpa | sed -n '/^Metrics:/,/^Conditions:/p;/^Events:/,\$p'"
+  kubectl delete ns $NS --wait=false >/dev/null
 }
 
 parts=${1:-"volumes hpa"}

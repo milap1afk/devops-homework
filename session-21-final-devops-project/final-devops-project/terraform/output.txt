@@ -8,7 +8,7 @@ $ terraform validate
 Success! The configuration is valid.
 
 
-$ terraform plan -input=false -out=final.tfplan | grep -E "^  # |^Plan:"
+$ terraform plan -input=false -var-file=terraform.tfvars.example -out=final.tfplan | grep -E "^  # |^Plan:"
   # aws_ecr_lifecycle_policy.kirana will be created
   # aws_ecr_repository.kirana will be created
   # aws_eip.nat will be created

@@ -1,0 +1,285 @@
+################ Task 1: clone the repository ################
+$ git clone --depth 1 https://github.com/Nency-Ravaliya/devops-heros /var/folders/cl/szss6mzd0s9864_my87nbpdr0000gn/T//s7-devops-heros
+Cloning into '/var/folders/cl/szss6mzd0s9864_my87nbpdr0000gn/T//s7-devops-heros'...
+
+$ ls /var/folders/cl/szss6mzd0s9864_my87nbpdr0000gn/T//s7-devops-heros/session6-7-docker/multi-stage-dockerfile
+Dockerfile
+package.json
+server.js
+
+$ cat /var/folders/cl/szss6mzd0s9864_my87nbpdr0000gn/T//s7-devops-heros/session6-7-docker/multi-stage-dockerfile/Dockerfile
+# -------------------------
+# Stage 1: Build
+# -------------------------
+FROM node:24-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+
+# -------------------------
+# Stage 2: Production
+# -------------------------
+FROM node:24-alpine AS production
+WORKDIR /app
+COPY --from=builder /app/package*.json ./
+RUN npm install --omit=dev
+COPY --from=builder /app/server.js ./
+EXPOSE 3000
+CMD ["npm", "start"]
+$ cat /var/folders/cl/szss6mzd0s9864_my87nbpdr0000gn/T//s7-devops-heros/session6-7-docker/multi-stage-dockerfile/server.js
+const express = require("express");
+
+const app = express();
+const PORT = 3000;
+
+app.get("/", (req, res) => {
+  res.send("<h1>Hello World from Docker Multi-Stage Build!</h1>");
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+$ diff -r -x Dockerfile.single /var/folders/cl/szss6mzd0s9864_my87nbpdr0000gn/T//s7-devops-heros/session6-7-docker/multi-stage-dockerfile multi-stage-dockerfile && echo 'local copy identical to the cloned files'
+local copy identical to the cloned files
+
+################ Task 1: build with the multi-stage Dockerfile ################
+$ docker build -t s7-multistage:1.0 /var/folders/cl/szss6mzd0s9864_my87nbpdr0000gn/T//s7-devops-heros/session6-7-docker/multi-stage-dockerfile
+[internal] load build definition from Dockerfile
+[internal] load metadata for docker.io/library/node:24-alpine
+[internal] load .dockerignore
+[internal] load build context
+[builder 1/5] FROM docker.io/library/node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+[internal] load build context
+[builder 5/5] COPY . .
+[production 3/5] COPY --from=builder /app/package*.json ./
+[production 4/5] RUN npm install --omit=dev
+[builder 2/5] WORKDIR /app
+[builder 3/5] COPY package*.json ./
+[builder 4/5] RUN npm install
+[production 5/5] COPY --from=builder /app/server.js ./
+naming to docker.io/library/s7-multistage:1.0 0.0s done
+
+################ Task 1: run it on port 8080 ################
+# the app listens on 3000 inside the container -> publish it as host port 8080
+$ docker run -d --name s7-multistage -p 8080:3000 s7-multistage:1.0
+9f3bb347d13e0c9849a6053a75390367044ed04edd3c537821210bfd6fb1e657
+
+# port 8080 answered after ~14s
+
+$ docker ps --filter name=s7-multistage --format "table {{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}\t{{.Names}}"
+CONTAINER ID   IMAGE               STATUS          PORTS                                         NAMES
+9f3bb347d13e   s7-multistage:1.0   Up 23 seconds   0.0.0.0:8080->3000/tcp, [::]:8080->3000/tcp   s7-multistage
+
+$ docker port s7-multistage
+3000/tcp -> 0.0.0.0:8080
+3000/tcp -> [::]:8080
+
+$ docker logs s7-multistage
+
+> docker-hello-world@1.0.0 start
+> node server.js
+
+Server running on port 3000
+
+################ Task 1: access the application ################
+$ curl -s http://localhost:8080; echo
+<h1>Hello World from Docker Multi-Stage Build!</h1>
+
+$ curl -sI http://localhost:8080 | head -4
+HTTP/1.1 200 OK
+X-Powered-By: Express
+Content-Type: text/html; charset=utf-8
+Content-Length: 51
+
+$ curl -s http://localhost:8080 | grep -io "Hello World from Docker multi-stage build" && echo "VERIFIED: response contains the expected text"
+Hello World from Docker Multi-Stage Build
+VERIFIED: response contains the expected text
+
+# browser screenshot saved: screenshots/multistage-browser-8080.png
+
+# what is inside the final image: only package*.json, server.js and production node_modules
+$ docker exec s7-multistage ls /app
+node_modules
+package-lock.json
+package.json
+server.js
+
+################ Single-stage vs multi-stage image size ################
+$ docker build -t s7-single:1.0 -f multi-stage-dockerfile/Dockerfile.single multi-stage-dockerfile
+[internal] load build definition from Dockerfile.single
+[internal] load metadata for docker.io/library/node:24-alpine
+[internal] load .dockerignore
+[internal] load build context
+[1/5] FROM docker.io/library/node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+[4/5] RUN npm install
+[2/5] WORKDIR /app
+[3/5] COPY package*.json ./
+[5/5] COPY . .
+naming to docker.io/library/s7-single:1.0
+naming to docker.io/library/s7-single:1.0 0.0s done
+
+$ docker build -t s7-java-single:1.0 -f apps/java-app/Dockerfile.single apps/java-app
+[internal] load build definition from Dockerfile.single
+[internal] load metadata for docker.io/library/eclipse-temurin:21-jdk
+[internal] load .dockerignore
+[1/4] FROM docker.io/library/eclipse-temurin:21-jdk@sha256:3e3c176ffed168beb42c607be9bc1639b466cf00261a0fb04425562c9d0c5c2b
+[internal] load build context
+[2/4] WORKDIR /app
+[3/4] COPY HelloWorld.java .
+[4/4] RUN javac HelloWorld.java
+naming to docker.io/library/s7-java-single:1.0 0.0s done
+
+$ docker build -t s7-java:1.0 apps/java-app
+[internal] load build definition from Dockerfile
+[internal] load metadata for docker.io/library/eclipse-temurin:21-jdk
+[internal] load metadata for docker.io/library/eclipse-temurin:21-jre
+[internal] load metadata for docker.io/library/eclipse-temurin:21-jdk
+[internal] load .dockerignore
+[build 1/4] FROM docker.io/library/eclipse-temurin:21-jdk@sha256:3e3c176ffed168beb42c607be9bc1639b466cf00261a0fb04425562c9d0c5c2b
+[stage-1 1/3] FROM docker.io/library/eclipse-temurin:21-jre@sha256:cff19e6215689161eb6162c11b86b0c60ddf802164f2eaf48d570f8fb79a36c5
+[internal] load build context
+[build 2/4] WORKDIR /src
+[build 3/4] COPY HelloWorld.java .
+[build 4/4] RUN javac HelloWorld.java
+[stage-1 2/3] WORKDIR /app
+[stage-1 3/3] COPY --from=build /src/HelloWorld.class .
+naming to docker.io/library/s7-java:1.0 0.0s done
+
+$ docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" | grep -E "REPOSITORY|^s7-(multistage|single|java)"
+REPOSITORY                          TAG         SIZE
+s7-java-single                      1.0         756MB
+s7-single                           1.0         256MB
+s7-multistage                       1.0         249MB
+s7-java                             1.0         486MB
+
+$ docker image inspect -f '{{.RepoTags}} {{.Size}} bytes' s7-multistage:1.0 s7-single:1.0 s7-java:1.0 s7-java-single:1.0
+[s7-multistage:1.0] 64000522 bytes
+[s7-single:1.0] 64915187 bytes
+[s7-java:1.0] 116425734 bytes
+[s7-java-single:1.0] 224561075 bytes
+
+$ docker history --format '{{.CreatedBy}} => {{.Size}}' s7-multistage:1.0 | head -8
+CMD ["npm" "start"] => 0B
+EXPOSE [3000/tcp] => 0B
+COPY /app/server.js ./ # buildkit => 12.3kB
+RUN /bin/sh -c npm install --omit=dev # buil… => 9.45MB
+COPY /app/package*.json ./ # buildkit => 45.1kB
+WORKDIR /app => 8.19kB
+CMD ["node"] => 0B
+ENTRYPOINT ["docker-entrypoint.sh"] => 0B
+
+$ docker history --format '{{.CreatedBy}} => {{.Size}}' s7-single:1.0 | head -6
+CMD ["npm" "start"] => 0B
+EXPOSE [3000/tcp] => 0B
+COPY . . # buildkit => 24.6kB
+RUN /bin/sh -c npm install # buildkit => 15.1MB
+COPY package*.json ./ # buildkit => 12.3kB
+WORKDIR /app => 8.19kB
+
+# where the node difference comes from: files in /app and the npm cache (KB)
+$ docker run --rm s7-single:1.0 sh -c 'ls -A /app | tr "\n" " "; echo; du -sk /root/.npm'
+Dockerfile Dockerfile.single node_modules package-lock.json package.json server.js 
+7688	/root/.npm
+
+$ docker run --rm s7-multistage:1.0 sh -c 'ls -A /app | tr "\n" " "; echo; du -sk /root/.npm'
+node_modules package-lock.json package.json server.js 
+2132	/root/.npm
+
+# java: is the compiler (javac) in the final image?
+$ docker run --rm s7-java-single:1.0 sh -c 'command -v javac || echo no javac'
+/opt/java/openjdk/bin/javac
+
+$ docker run --rm s7-java:1.0 sh -c 'command -v javac || echo no javac'
+no javac
+
+################ Task 3: deploy Node.js, Python and Java apps ################
+$ docker build -t s7-nodejs:1.0 apps/nodejs-app
+[internal] load build definition from Dockerfile
+[internal] load metadata for docker.io/library/node:20-alpine
+[internal] load .dockerignore
+[internal] load build context
+[1/4] FROM docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+[2/4] WORKDIR /app
+[3/4] COPY package.json .
+[4/4] COPY server.js .
+naming to docker.io/library/s7-nodejs:1.0 done
+
+$ docker build -t s7-python:1.0 apps/python-app
+[internal] load build definition from Dockerfile
+[internal] load metadata for docker.io/library/python:3.12-slim
+[internal] load .dockerignore
+[internal] load build context
+[1/5] FROM docker.io/library/python:3.12-slim@sha256:05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7ed9226b6800b0d6f
+[3/5] COPY requirements.txt .
+[4/5] RUN pip install --no-cache-dir -r requirements.txt
+[2/5] WORKDIR /app
+[5/5] COPY app.py .
+naming to docker.io/library/s7-python:1.0 done
+
+$ docker run -d --name s7-nodejs -p 3001:3000 s7-nodejs:1.0
+925122b5bc19d984564d60a87c45bb72860d300f717abf6b20840c9ddd4169a6
+
+$ docker run -d --name s7-python -p 5001:5000 s7-python:1.0
+d170b3df2c86b5f45777a62a7389514b4c27507a01f343bd69e751029540cf7d
+
+$ docker run -d --name s7-java   -p 8081:8080 s7-java:1.0
+9b3ec9f20ff4cd7ab332c33b8426aee332cd9b365aa426561e171506ff0089d4
+
+# port 3001 answered after ~4s
+
+# port 5001 answered after ~1s
+
+# port 8081 answered after ~3s
+
+$ docker ps --filter name=s7- --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
+NAMES           IMAGE               STATUS          PORTS
+s7-java         s7-java:1.0         Up 10 seconds   0.0.0.0:8081->8080/tcp, [::]:8081->8080/tcp
+s7-python       s7-python:1.0       Up 13 seconds   0.0.0.0:5001->5000/tcp, [::]:5001->5000/tcp
+s7-nodejs       s7-nodejs:1.0       Up 17 seconds   0.0.0.0:3001->3000/tcp, [::]:3001->3000/tcp
+s7-multistage   s7-multistage:1.0   Up 2 minutes    0.0.0.0:8080->3000/tcp, [::]:8080->3000/tcp
+
+$ curl -s http://localhost:8080; echo
+<h1>Hello World from Docker Multi-Stage Build!</h1>
+
+$ curl -s http://localhost:3001; echo
+<h1>Hello World from Node.js!</h1>
+
+$ curl -s http://localhost:5001; echo
+<h1>Hello World from Python (Flask)!</h1>
+
+$ curl -s http://localhost:8081; echo
+<h1>Hello World from Java!</h1>
+
+# browser screenshots saved: screenshots/{nodejs-browser-3001,python-browser-5001,java-browser-8081}.png
+
+$ docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" | grep -E "REPOSITORY|^s7-"
+REPOSITORY                          TAG         SIZE
+s7-java-single                      1.0         756MB
+s7-single                           1.0         256MB
+s7-multistage                       1.0         249MB
+s7-java                             1.0         486MB
+s7-python                           1.0         223MB
+s7-nodejs                           1.0         194MB
+
+################ Cleanup ################
+$ docker rm -f s7-multistage s7-nodejs s7-python s7-java
+s7-multistage
+s7-nodejs
+s7-python
+s7-java
+
+$ docker rmi s7-multistage:1.0 s7-single:1.0 s7-java-single:1.0 s7-java:1.0 s7-nodejs:1.0 s7-python:1.0
+Untagged: s7-multistage:1.0
+Deleted: sha256:a3b8f1269be101a853f84fbaa9760dc9592fd135b7de31b8ebfb5e61fcff85c7
+Untagged: s7-single:1.0
+Deleted: sha256:8691b337c0172f3a020ecef71a28843f60fa1348a0c0c7c4789171c42ce3e968
+Untagged: s7-java-single:1.0
+Deleted: sha256:a6f8d40dcde60a86540a342cba74f794834205645dc06b907bc892621a9e54fc
+Untagged: s7-java:1.0
+Deleted: sha256:39d23b864c889742e9e6279595ee02025771a0933016dfa8bf10a8211038dfee
+Untagged: s7-nodejs:1.0
+Deleted: sha256:cdc496abd59f17233a3cdc61c1ebe0c3013afdf616ceb3932153028134ed1c19
+Untagged: s7-python:1.0
+Deleted: sha256:5cff64b68f46f71635a5fca7d336912280f3d7d268d7e049ca60f6651af781a0
+

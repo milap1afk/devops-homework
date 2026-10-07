@@ -1,0 +1,85 @@
+# Rendered from ../helm/kirana by kubernetes/render.sh. Edit the chart, not this file.
+apiVersion: v1
+kind: Service
+metadata:
+  name: kirana-frontend
+  labels:
+    app.kubernetes.io/name: kirana
+    app.kubernetes.io/instance: kirana
+    app.kubernetes.io/part-of: kirana
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: kirana-2.0.0
+    app.kubernetes.io/component: frontend
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: kirana
+    app.kubernetes.io/component: frontend
+  ports:
+    - { name: http, port: 80, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kirana-frontend
+  labels:
+    app.kubernetes.io/name: kirana
+    app.kubernetes.io/instance: kirana
+    app.kubernetes.io/part-of: kirana
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: kirana-2.0.0
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/version: "2.0.0"
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: kirana
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kirana
+        app.kubernetes.io/instance: kirana
+        app.kubernetes.io/part-of: kirana
+        app.kubernetes.io/managed-by: Helm
+        helm.sh/chart: kirana-2.0.0
+        app.kubernetes.io/component: frontend
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+        runAsUser: 101
+      containers:
+        - name: frontend
+          image: ghcr.io/milap1afk/kirana-frontend:2.0.0
+          imagePullPolicy: Never
+          ports: [{ name: http, containerPort: 8080 }]
+          env:
+            - name: BACKEND_URL     # used by the in-container /api proxy (the Ingress also routes /api directly)
+              value: "http://kirana-backend:80"
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 200m
+              memory: 64Mi
+            requests:
+              cpu: 10m
+              memory: 16Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:   # nginx needs a few writable paths with a read-only root filesystem
+            - { name: tmp, mountPath: /tmp }
+            - { name: conf, mountPath: /etc/nginx/conf.d }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - { name: conf, emptyDir: {} }

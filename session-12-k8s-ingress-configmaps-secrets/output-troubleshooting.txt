@@ -1,0 +1,136 @@
+################ SETUP: PostgreSQL (correct password) + backend that logs in every 5s ################
+$ kubectl apply -f 05-troubleshooting/postgres.yaml
+namespace/s12-ts created
+secret/postgres-server-secret created
+deployment.apps/yatri-postgres created
+service/yatri-postgres created
+
+$ kubectl -n s12-ts rollout status deploy/yatri-postgres --timeout=240s
+Waiting for deployment spec update to be observed...
+Waiting for deployment "yatri-postgres" rollout to finish: 0 out of 1 new replicas have been updated...
+Waiting for deployment "yatri-postgres" rollout to finish: 0 of 1 updated replicas are available...
+deployment "yatri-postgres" successfully rolled out
+
+$ kubectl apply -f 05-troubleshooting/broken-secret.yaml -f 05-troubleshooting/app.yaml
+secret/yatri-db-secret created
+deployment.apps/yatri-backend created
+
+################ 1. IDENTIFY THE PROBLEM ################
+# Every Pod is Running and Ready, nothing restarts -> 'kubectl get pods' looks healthy:
+$ kubectl -n s12-ts get pods
+NAME                              READY   STATUS    RESTARTS   AGE
+yatri-backend-dc88cb79b-d67mc     1/1     Running   0          24s
+yatri-postgres-85d589f87f-fpqpz   1/1     Running   0          2m18s
+
+# ...but the backend cannot log in to the database:
+$ applog 3
+09:08:05 DB ERROR: psql: error: connection to server at "yatri-postgres" (10.101.90.92), port 5432 failed: FATAL:  password authentication failed for user "yatri_admin"
+09:08:10 DB ERROR: psql: error: connection to server at "yatri-postgres" (10.101.90.92), port 5432 failed: FATAL:  password authentication failed for user "yatri_admin"
+09:08:16 DB ERROR: psql: error: connection to server at "yatri-postgres" (10.101.90.92), port 5432 failed: FATAL:  password authentication failed for user "yatri_admin"
+
+################ 2. TROUBLESHOOTING COMMANDS ################
+# The server side confirms it is a credential problem, not networking/DNS (the connection reached Postgres):
+$ kubectl -n s12-ts logs deploy/yatri-postgres --tail=40 | grep -A1 'password authentication failed' | tail -2
+2026-10-07 09:08:16.565 UTC [274] FATAL:  password authentication failed for user "yatri_admin"
+2026-10-07 09:08:16.565 UTC [274] DETAIL:  Connection matched file "/var/lib/postgresql/data/pg_hba.conf" line 128: "host all all all scram-sha-256"
+
+# Which Secret/key does the app use?
+$ kubectl -n s12-ts get deploy yatri-backend -o jsonpath='{range .spec.template.spec.containers[0].env[*]}{.name}{" <- "}{.valueFrom.secretKeyRef.name}{"/"}{.valueFrom.secretKeyRef.key}{"\n"}{end}'
+POSTGRES_USER <- yatri-db-secret/POSTGRES_USER
+POSTGRES_DB <- yatri-db-secret/POSTGRES_DB
+PGPASSWORD <- yatri-db-secret/POSTGRES_PASSWORD
+
+# describe hides values but shows SIZES: 'secretpassword' is 14 characters, the Secret holds 15 bytes
+$ kubectl -n s12-ts describe secret yatri-db-secret | sed -n '/^Data/,$p'
+Data
+====
+POSTGRES_DB:        19 bytes
+POSTGRES_PASSWORD:  15 bytes
+POSTGRES_USER:      11 bytes
+
+$ kubectl -n s12-ts get secret yatri-db-secret -o jsonpath='{.data.POSTGRES_PASSWORD}'; echo
+c2VjcmV0cGFzc3dvcmQK
+
+$ kubectl -n s12-ts get secret yatri-db-secret -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d | xxd
+00000000: 7365 6372 6574 7061 7373 776f 7264 0a    secretpassword.
+
+# compare with the password the database server was created with:
+$ kubectl -n s12-ts get secret postgres-server-secret -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d | xxd
+00000000: 7365 6372 6574 7061 7373 776f 7264       secretpassword
+
+# and what the running container actually received (length of the env var):
+$ kubectl -n s12-ts exec deploy/yatri-backend -- sh -c 'echo PGPASSWORD length: ${#PGPASSWORD}'
+PGPASSWORD length: 15
+
+# reproduce how the value was produced:
+$ echo "secretpassword" | xxd
+00000000: 7365 6372 6574 7061 7373 776f 7264 0a    secretpassword.
+
+$ echo "secretpassword" | base64
+c2VjcmV0cGFzc3dvcmQK
+
+$ echo -n "secretpassword" | base64
+c2VjcmV0cGFzc3dvcmQ=
+
+################ 3. ROOT CAUSE ################
+# The password was encoded with 'echo "secretpassword" | base64'. echo appends a newline (0x0a), so the Secret
+# stores 'secretpassword\n' (15 bytes, base64 ending in 'K' instead of '='). The app sends that exact string,
+# Postgres compares it with 'secretpassword' and rejects it: password authentication failed.
+################ 4. FIX ################
+$ diff 05-troubleshooting/broken-secret.yaml 05-troubleshooting/fixed-secret.yaml
+1,2c1,2
+< # BROKEN: the password was encoded with plain `echo "secretpassword" | base64`.
+< # echo appends a newline, so the stored value is "secretpassword\n" (15 bytes, base64 ends in "K").
+---
+> # FIXED: values encoded with `echo -n ... | base64` (no trailing newline).
+> # Even better: use stringData, or `kubectl create secret generic --from-literal=...`, so nobody base64-encodes by hand.
+12,13c12,13
+<   # echo "secretpassword" | base64      <-- missing -n
+<   POSTGRES_PASSWORD: c2VjcmV0cGFzc3dvcmQK
+---
+>   # echo -n "secretpassword" | base64
+>   POSTGRES_PASSWORD: c2VjcmV0cGFzc3dvcmQ=
+
+$ kubectl apply -f 05-troubleshooting/fixed-secret.yaml
+secret/yatri-db-secret configured
+
+$ kubectl -n s12-ts describe secret yatri-db-secret | sed -n '/^Data/,$p'
+Data
+====
+POSTGRES_DB:        19 bytes
+POSTGRES_PASSWORD:  14 bytes
+POSTGRES_USER:      11 bytes
+
+# The Secret is fixed, but the app STILL fails: env vars are copied into the container only when it starts
+$ applog 2
+09:08:23 DB ERROR: psql: error: connection to server at "yatri-postgres" (10.101.90.92), port 5432 failed: FATAL:  password authentication failed for user "yatri_admin"
+09:08:29 DB ERROR: psql: error: connection to server at "yatri-postgres" (10.101.90.92), port 5432 failed: FATAL:  password authentication failed for user "yatri_admin"
+
+$ kubectl -n s12-ts rollout restart deploy/yatri-backend && kubectl -n s12-ts rollout status deploy/yatri-backend --timeout=180s
+deployment.apps/yatri-backend restarted
+Waiting for deployment spec update to be observed...
+Waiting for deployment spec update to be observed...
+Waiting for deployment "yatri-backend" rollout to finish: 0 out of 1 new replicas have been updated...
+Waiting for deployment "yatri-backend" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "yatri-backend" rollout to finish: 1 old replicas are pending termination...
+deployment "yatri-backend" successfully rolled out
+
+################ 5. VERIFY (after) ################
+$ kubectl -n s12-ts get pods
+NAME                              READY   STATUS        RESTARTS   AGE
+yatri-backend-7fd9f5fc4-vp9k9     1/1     Running       0          2m6s
+yatri-backend-dc88cb79b-d67mc     1/1     Terminating   0          2m51s
+yatri-postgres-85d589f87f-fpqpz   1/1     Running       0          4m45s
+
+$ applog 3
+Found 2 pods, using pod/yatri-backend-7fd9f5fc4-vp9k9
+09:10:27 OK: connected to yatri_production_db as yatri_admin
+09:10:35 OK: connected to yatri_production_db as yatri_admin
+09:10:42 OK: connected to yatri_production_db as yatri_admin
+
+$ kubectl -n s12-ts exec deploy/yatri-backend -- sh -c 'echo PGPASSWORD length: ${#PGPASSWORD}'
+PGPASSWORD length: 14
+
+$ kubectl -n s12-ts logs deploy/yatri-postgres --since=20s | grep -c 'password authentication failed' || true
+0
+

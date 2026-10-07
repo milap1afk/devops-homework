@@ -1,6 +1,6 @@
 {
-  "title": "Kirana API",
-  "uid": "kirana-api",
+  "title": "Kirana Ledger",
+  "uid": "kirana-ledger",
   "schemaVersion": 39,
   "time": {
     "from": "now-30m",
@@ -14,7 +14,7 @@
     {
       "id": 1,
       "type": "timeseries",
-      "title": "Requests / s by status",
+      "title": "HTTP requests / s by endpoint",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -33,8 +33,8 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(kirana_http_requests_total[1m])) by (status)",
-          "legendFormat": "{{status}}",
+          "expr": "sum(rate(http_requests_total{service=~\".*-backend\"}[1m])) by (method, handler)",
+          "legendFormat": "{{method}} {{handler}}",
           "refId": "A"
         }
       ]
@@ -61,7 +61,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum(rate(kirana_http_request_duration_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=~\".*-backend\"}[5m])) by (le))",
           "legendFormat": "p95",
           "refId": "A"
         }
@@ -70,11 +70,39 @@
     {
       "id": 3,
       "type": "timeseries",
-      "title": "Ledger entries recorded",
+      "title": "Error rate (5xx share)",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{service=~\".*-backend\",status=\"5xx\"}[5m])) / clamp_min(sum(rate(http_requests_total{service=~\".*-backend\"}[5m])), 1e-9)",
+          "legendFormat": "5xx",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Ledger entries recorded (30m)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
         "y": 8
       },
       "datasource": {
@@ -96,37 +124,9 @@
       ]
     },
     {
-      "id": 4,
-      "type": "timeseries",
-      "title": "API Pods (HPA replicas)",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 8
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "targets": [
-        {
-          "expr": "kube_deployment_status_replicas_available{deployment=~\".*-api\"}",
-          "legendFormat": "{{deployment}}",
-          "refId": "A"
-        }
-      ]
-    },
-    {
       "id": 5,
       "type": "timeseries",
-      "title": "CPU per Pod (cores)",
+      "title": "Ready Pods per tier",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -145,8 +145,8 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(container_cpu_usage_seconds_total{container=\"api\"}[2m])) by (pod)",
-          "legendFormat": "{{pod}}",
+          "expr": "kube_deployment_status_replicas_available{deployment=~\".*-(backend|frontend)\"}",
+          "legendFormat": "{{deployment}}",
           "refId": "A"
         }
       ]
@@ -154,7 +154,7 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "Memory per Pod",
+      "title": "CPU per Pod (cores)",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -167,13 +167,13 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "bytes"
+          "unit": "short"
         },
         "overrides": []
       },
       "targets": [
         {
-          "expr": "sum(container_memory_working_set_bytes{container=~\"api|postgres\"}) by (pod)",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{container=~\"backend|frontend|postgres\"}[2m])) by (pod)",
           "legendFormat": "{{pod}}",
           "refId": "A"
         }

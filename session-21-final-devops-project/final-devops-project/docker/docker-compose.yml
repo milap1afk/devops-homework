@@ -1,0 +1,54 @@
+# One command runs the whole stack:   docker compose -f docker/docker-compose.yml up --build
+# (run from final-devops-project/;  then open http://localhost:3000)
+name: kirana
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ledger
+      POSTGRES_USER: kirana
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-compose-only}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kirana -d ledger"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  migrate:                       # one-shot: apply Alembic migrations, then exit
+    build: { context: ../application/backend }
+    image: kirana-backend:local
+    command: ["alembic", "upgrade", "head"]
+    environment: &backend-env
+      DATABASE_URL: postgresql+psycopg://kirana:${POSTGRES_PASSWORD:-local-compose-only}@postgres:5432/ledger
+      API_KEY: ${API_KEY:-local-dev-key}
+      SHOP_NAME: ${SHOP_NAME:-Sharma Kirana Store}
+      APP_VERSION: compose
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  backend:
+    image: kirana-backend:local
+    environment: *backend-env
+    ports: ["8001:8000"]   # 8001 on the host (8000 is often taken locally)
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  frontend:
+    build: { context: ../application/frontend }
+    image: kirana-frontend:local
+    environment:
+      BACKEND_URL: http://backend:8000
+    ports: ["3000:8080"]
+    depends_on:
+      backend: { condition: service_healthy }
+
+volumes:
+  pgdata:

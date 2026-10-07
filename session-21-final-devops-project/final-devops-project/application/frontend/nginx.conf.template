@@ -1,0 +1,23 @@
+# Rendered at container start by the nginx image's envsubst step (BACKEND_URL from env)
+server {
+  listen 8080;
+  server_name _;
+  root /usr/share/nginx/html;
+  index index.html;
+
+  location / {
+    try_files $uri /index.html;
+  }
+
+  # Compose: browser -> frontend nginx -> backend. (In Kubernetes the Ingress sends /api straight to the backend.)
+  location /api/ {
+    proxy_pass ${BACKEND_URL};
+    proxy_set_header Host $proxy_host;   # never forward the client-controlled Host header
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+
+  location = /healthz {
+    access_log off;
+    return 200 "ok\n";
+  }
+}

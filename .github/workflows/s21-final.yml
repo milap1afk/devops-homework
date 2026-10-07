@@ -1,6 +1,6 @@
-# Session 21 - Final DevOps project pipeline
-# Build & test -> SAST -> SCA -> secret scan -> IaC scan -> Docker build -> image scan
-#   -> security gate -> push image -> deploy with Helm to Kubernetes -> verify
+# Session 21 - Final DevOps project pipeline (Kirana ledger: FastAPI backend + Nginx frontend + PostgreSQL)
+# Build & test -> SAST -> SCA -> secret scan -> IaC scan -> Docker build (x2) -> Trivy image scan (x2)
+#   -> security gate -> push to GHCR with the git SHA tag (x2) -> deploy with Helm to Kubernetes -> smoke test
 name: "S21 Final DevOps Project"
 
 on:
@@ -19,26 +19,35 @@ permissions:
 
 env:
   P: session-21-final-devops-project/final-devops-project
-  IMAGE: ghcr.io/${{ github.repository_owner }}/kirana-final
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
   TAG: ${{ github.sha }}
 
 jobs:
   build-test:
-    name: "1. Build & unit test"
+    name: "1. Build & test (pytest + frontend build)"
     runs-on: ubuntu-latest
-    defaults: { run: { working-directory: "${{ env.P }}/application" } }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
-        with: { python-version: "3.12", cache: pip, cache-dependency-path: "${{ env.P }}/application/requirements-dev.txt" }
-      - run: pip install -r requirements-dev.txt
-      - name: Lint
-        run: flake8 .
-      - name: Unit tests
-        run: pytest -v --junitxml=junit.xml --cov=app --cov-report=term --cov-fail-under=80
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: "${{ env.P }}/application/backend/requirements-dev.txt" }
+      - name: Backend - install, lint, test (fails the build on any test failure)
+        working-directory: ${{ env.P }}/application/backend
+        run: |
+          pip install -r requirements-dev.txt
+          flake8 .
+          pytest -v --junitxml=junit.xml --cov=app --cov-report=term --cov-fail-under=80
+      - uses: actions/setup-node@v7
+        with: { node-version: 22, cache: npm, cache-dependency-path: "${{ env.P }}/application/frontend/package-lock.json" }
+      - name: Frontend - install and build
+        working-directory: ${{ env.P }}/application/frontend
+        run: npm ci && npm run build && ls -la dist dist/assets
       - uses: actions/upload-artifact@v7
         if: always()
-        with: { name: s21-test-results, path: "${{ env.P }}/application/junit.xml" }
+        with:
+          name: s21-build-and-test
+          path: |
+            ${{ env.P }}/application/backend/junit.xml
+            ${{ env.P }}/application/frontend/dist
 
   sast:
     name: "2. SAST (Semgrep)"
@@ -49,20 +58,25 @@ jobs:
       - uses: actions/checkout@v7
       - run: |
           cp $P/security/.semgrepignore .semgrepignore
-          semgrep scan --config p/python --config p/flask --config p/dockerfile --config p/secrets \
-            --metrics off --error $P/application $P/docker
+          semgrep scan --config p/python --config p/fastapi --config p/javascript --config p/dockerfile \
+            --config p/nginx --config p/secrets --metrics off --error $P/application
 
   sca:
-    name: "3. SCA (pip-audit + Trivy fs)"
+    name: "3. SCA (pip-audit + npm audit + Trivy fs)"
     needs: build-test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with: { python-version: "3.12" }
-      - name: pip-audit (known vulnerable Python packages)
-        run: pip install pip-audit && pip-audit -r $P/application/requirements.txt --strict
-      - name: Trivy filesystem scan
+      - name: pip-audit (backend)
+        run: pip install pip-audit && pip-audit -r $P/application/backend/requirements.txt --strict
+      - uses: actions/setup-node@v7
+        with: { node-version: 22 }
+      - name: npm audit (frontend)
+        working-directory: ${{ env.P }}/application/frontend
+        run: npm audit --audit-level=high
+      - name: Trivy filesystem scan (both tiers)
         if: always()
         uses: aquasecurity/trivy-action@v0.36.0
         with: { scan-type: fs, scan-ref: "${{ env.P }}/application", trivy-config: "${{ env.P }}/security/trivy.yaml" }
@@ -74,7 +88,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
-      - name: Gitleaks (history + files of the project)
+      - name: Gitleaks (history + current files)
         run: |
           docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 git /repo --log-opts="-- $P" \
             --config /repo/$P/security/.gitleaks.toml --redact --verbose --exit-code 1
@@ -82,51 +96,54 @@ jobs:
             --config /repo/$P/security/.gitleaks.toml --redact --exit-code 1
 
   iac-scan:
-    name: "5. IaC scan (Trivy config + terraform validate)"
+    name: "5. IaC scan (Trivy config + terraform validate + helm lint)"
     needs: build-test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Trivy misconfiguration scan (Helm chart, K8s manifests, Terraform, Dockerfile)
-        uses: aquasecurity/trivy-action@v0.36.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with: { scan-type: config, scan-ref: "${{ env.P }}", trivy-config: "${{ env.P }}/security/trivy.yaml" }
       - uses: hashicorp/setup-terraform@v3
       - name: terraform fmt + validate
         working-directory: ${{ env.P }}/terraform
         run: terraform fmt -check -recursive && terraform init -backend=false -input=false && terraform validate
       - uses: azure/setup-helm@v4
-      - name: helm lint
-        run: helm lint $P/helm/kirana --set secrets.apiKey=x --set secrets.postgresPassword=y
+      - run: helm lint $P/helm/kirana --set secrets.apiKey=x --set secrets.postgresPassword=y
 
   docker-build:
-    name: "6. Docker build"
+    name: "6. Docker build (${{ matrix.tier }})"
     needs: build-test
     runs-on: ubuntu-latest
+    strategy:
+      matrix: { tier: [backend, frontend] }
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
       - uses: docker/build-push-action@v7
         with:
-          context: ${{ env.P }}
-          file: ${{ env.P }}/docker/Dockerfile
+          context: ${{ env.P }}/application/${{ matrix.tier }}
           build-args: APP_VERSION=${{ github.sha }}
-          tags: ${{ env.IMAGE }}:${{ env.TAG }}
-          outputs: type=docker,dest=${{ runner.temp }}/image.tar
-          cache-from: type=gha,scope=s21
-          cache-to: type=gha,scope=s21,mode=max
+          tags: ${{ env.REGISTRY }}/kirana-${{ matrix.tier }}:${{ env.TAG }}
+          outputs: type=docker,dest=${{ runner.temp }}/${{ matrix.tier }}.tar
+          cache-from: type=gha,scope=s21-${{ matrix.tier }}
+          cache-to: type=gha,scope=s21-${{ matrix.tier }},mode=max
       - uses: actions/upload-artifact@v7
-        with: { name: s21-image, path: "${{ runner.temp }}/image.tar", retention-days: 3 }
+        with: { name: "s21-image-${{ matrix.tier }}", path: "${{ runner.temp }}/${{ matrix.tier }}.tar", retention-days: 3 }
 
   image-scan:
-    name: "7. Container image scan (Trivy)"
+    name: "7. Trivy image scan (${{ matrix.tier }})"
     needs: docker-build
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: { tier: [backend, frontend] }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
-        with: { name: s21-image, path: "${{ runner.temp }}" }
-      - uses: aquasecurity/trivy-action@v0.36.0
-        with: { scan-type: image, input: "${{ runner.temp }}/image.tar", trivy-config: "${{ env.P }}/security/trivy.yaml" }
+        with: { name: "s21-image-${{ matrix.tier }}", path: "${{ runner.temp }}" }
+      - name: Trivy - fail on fixable HIGH/CRITICAL CVEs
+        uses: aquasecurity/trivy-action@v0.36.0
+        with: { scan-type: image, input: "${{ runner.temp }}/${{ matrix.tier }}.tar", trivy-config: "${{ env.P }}/security/trivy.yaml" }
 
   security-gate:
     name: "8. Security gate"
@@ -139,29 +156,28 @@ jobs:
         run: |
           echo "## 🔐 Security gate" >> "$GITHUB_STEP_SUMMARY"
           set -- $R
-          for name in SAST SCA "Secret scan" "IaC scan" "Image scan"; do
-            echo "- $name: $1" >> "$GITHUB_STEP_SUMMARY"; shift
-          done
-          for r in $R; do
-            [ "$r" = success ] || { echo "::error::Security gate FAILED"; echo "**BLOCKED**" >> "$GITHUB_STEP_SUMMARY"; exit 1; }
-          done
+          for name in SAST SCA "Secret scan" "IaC scan" "Image scan (both)"; do echo "- $name: $1" >> "$GITHUB_STEP_SUMMARY"; shift; done
+          for r in $R; do [ "$r" = success ] || { echo "::error::Security gate FAILED"; echo "**BLOCKED**" >> "$GITHUB_STEP_SUMMARY"; exit 1; }; done
           echo "Security gate PASSED"; echo "**PASSED**" >> "$GITHUB_STEP_SUMMARY"
 
   push-image:
-    name: "9. Push image (GHCR)"
+    name: "9. Push to GHCR (${{ matrix.tier }})"
     needs: [security-gate, docker-build]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions: { contents: read, packages: write }
+    strategy:
+      matrix: { tier: [backend, frontend] }
     steps:
       - uses: actions/download-artifact@v8
-        with: { name: s21-image, path: "${{ runner.temp }}" }
+        with: { name: "s21-image-${{ matrix.tier }}", path: "${{ runner.temp }}" }
       - uses: docker/login-action@v4
         with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
-      - run: |
-          docker load -i ${{ runner.temp }}/image.tar
-          docker push $IMAGE:$TAG
-          echo "Pushed \`$IMAGE:$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+      - name: Push the scanned image, tagged with the commit SHA (never "latest")
+        run: |
+          docker load -i ${{ runner.temp }}/${{ matrix.tier }}.tar
+          docker push $REGISTRY/kirana-${{ matrix.tier }}:$TAG
+          echo "Pushed \`$REGISTRY/kirana-${{ matrix.tier }}:$TAG\`" >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
     name: "10. Deploy with Helm + verify"
@@ -174,11 +190,11 @@ jobs:
       - uses: helm/kind-action@v1
         with: { cluster_name: dev }
       - uses: azure/setup-helm@v4
-      - name: Pull the scanned image into the cluster
+      - name: Pull both scanned images into the cluster
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker pull $IMAGE:$TAG && kind load docker-image $IMAGE:$TAG --name dev
-      - name: metrics-server (for the HPA)
+          for t in backend frontend; do docker pull $REGISTRY/kirana-$t:$TAG && kind load docker-image $REGISTRY/kirana-$t:$TAG --name dev; done
+      - name: metrics-server (for the HPAs)
         run: |
           kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
           kubectl -n kube-system patch deploy metrics-server --type=json \
@@ -187,22 +203,22 @@ jobs:
         env:
           API_KEY: ${{ secrets.KIRANA_API_KEY }}
         run: |
-          helm upgrade --install kirana $P/helm/kirana -n kirana --create-namespace \
-            --set image.tag=$TAG --set image.pullPolicy=IfNotPresent \
+          kubectl apply -f $P/k8s/namespace.yaml
+          helm upgrade --install kirana $P/helm/kirana -n kirana \
+            --set backend.image.tag=$TAG --set frontend.image.tag=$TAG \
             --set secrets.apiKey="$API_KEY" --set secrets.postgresPassword="$(openssl rand -hex 16)" \
             --set monitoring.serviceMonitor=false --set monitoring.prometheusRule=false --set monitoring.grafanaDashboard=false \
-            --wait --timeout 5m
+            --wait --timeout 6m
           helm list -n kirana
           kubectl -n kirana get deploy,sts,svc,ingress,hpa,pvc,pods -o wide
-      - name: Smoke test
+      - name: Smoke test (through the frontend nginx, like a browser)
         env:
           API_KEY: ${{ secrets.KIRANA_API_KEY }}
         run: |
-          kubectl -n kirana port-forward svc/kirana-api 8080:80 >/dev/null 2>&1 &
-          sleep 3
-          curl -fsS localhost:8080/ready
-          curl -fsS -X POST localhost:8080/entries -H 'Content-Type: application/json' -H "X-API-Key: $API_KEY" \
+          kubectl -n kirana port-forward svc/kirana-frontend 8080:80 >/dev/null 2>&1 &
+          sleep 4
+          curl -fsS localhost:8080/ | grep -q "<title>Kirana Ledger</title>"
+          curl -fsS -X POST localhost:8080/api/entries -H 'Content-Type: application/json' -H "X-API-Key: $API_KEY" \
                -d '{"customer":"Ramesh bhai","amount":500,"type":"udhar"}'
-          curl -fsS localhost:8080/balance/Ramesh | tee b.json; grep -q '"balance":500' b.json
-          curl -fsS localhost:8080/metrics | grep kirana_ledger_entries_total
-          echo "### Deployed \`$IMAGE:$TAG\` with Helm and passed the smoke test :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          curl -fsS localhost:8080/api/customers/Ramesh | tee b.json; grep -q '"balance":500' b.json
+          echo "### Deployed backend + frontend \`$TAG\` with Helm and passed the smoke test :rocket:" >> "$GITHUB_STEP_SUMMARY"

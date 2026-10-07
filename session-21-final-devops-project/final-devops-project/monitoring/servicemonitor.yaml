@@ -2,17 +2,17 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: kirana-api
+  name: kirana-backend
   labels:
     app.kubernetes.io/name: kirana
     app.kubernetes.io/instance: kirana
-    app.kubernetes.io/version: "1.0.2"
+    app.kubernetes.io/part-of: kirana
     app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: kirana-1.0.2
+    helm.sh/chart: kirana-2.0.0
 spec:
   selector:
     matchLabels:
       app.kubernetes.io/instance: kirana
-      app.kubernetes.io/component: api
+      app.kubernetes.io/component: backend
   endpoints:
     - { port: http, path: /metrics, interval: 15s }

@@ -1,0 +1,63 @@
+$ docker compose -f docker/docker-compose.yml up --build -d
+ Network kirana_default Created 
+ Container kirana-postgres-1 Created 
+ Container kirana-migrate-1 Created 
+ Container kirana-backend-1 Created 
+ Container kirana-frontend-1 Created 
+ Container kirana-postgres-1 Started 
+ Container kirana-postgres-1 Healthy 
+ Container kirana-migrate-1 Started 
+ Container kirana-migrate-1 Exited 
+ Container kirana-backend-1 Started 
+ Container kirana-backend-1 Healthy 
+ Container kirana-frontend-1 Started 
+
+$ docker compose -f final-devops-project/docker/docker-compose.yml ps -a --format 'table {{.Service}}	{{.Status}}	{{.Ports}}'
+SERVICE    STATUS                      PORTS
+backend    Up 16 seconds (healthy)     0.0.0.0:8001->8000/tcp, [::]:8001->8000/tcp
+frontend   Up 5 seconds                0.0.0.0:3000->8080/tcp, [::]:3000->8080/tcp
+migrate    Exited (0) 16 seconds ago   
+postgres   Up 46 seconds (healthy)     5432/tcp
+
+$ docker compose -f final-devops-project/docker/docker-compose.yml logs migrate | grep -i 'running upgrade'
+
+$ curl -s -m 5 localhost:3000/api/info
+{"shop":"Sharma Kirana Store","version":"compose"}
+$ curl -s -m 5 -X POST localhost:3000/api/entries -H Content-Type:application/json -H X-API-Key:local-dev-key -d '{"customer":"Ramesh bhai","amount":500,"type":"udhar","note":"atta + daal"}'
+{"id":1,"customer":"Ramesh","amount":500.0,"type":"udhar","note":"atta + daal","created_at":"2026-10-07T09:35:12.562593Z"}
+$ curl -s -m 5 -X POST localhost:3000/api/entries -H Content-Type:application/json -H X-API-Key:local-dev-key -d '{"customer":"Sunita ji","amount":300,"type":"udhar"}'
+{"id":2,"customer":"Sunita","amount":300.0,"type":"udhar","note":"","created_at":"2026-10-07T09:35:12.957020Z"}
+$ curl -s -m 5 -X POST localhost:3000/api/entries -H Content-Type:application/json -H X-API-Key:local-dev-key -d '{"customer":"Rameshbhai","amount":200,"type":"payment"}'
+{"id":3,"customer":"Ramesh","amount":200.0,"type":"payment","note":"","created_at":"2026-10-07T09:35:13.007829Z"}
+$ curl -s -m 5 -X POST localhost:3000/api/entries -H Content-Type:application/json -H X-API-Key:local-dev-key -d '{"customer":"Asha","amount":120,"type":"sale"}'
+{"id":4,"customer":"Asha","amount":120.0,"type":"sale","note":"","created_at":"2026-10-07T09:35:13.057026Z"}
+$ curl -s -m 5 -X POST localhost:3000/api/entries -H Content-Type:application/json -H X-API-Key:local-dev-key -d '{"customer":"Ravi","amount":900,"type":"udhar","note":"monthly ration"}'
+{"id":5,"customer":"Ravi","amount":900.0,"type":"udhar","note":"monthly ration","created_at":"2026-10-07T09:35:13.093027Z"}
+$ curl -s -m 5 localhost:3000/api/entries/2
+{"id":2,"customer":"Sunita","amount":300.0,"type":"udhar","note":"","created_at":"2026-10-07T09:35:12.957020Z"}
+$ curl -s -m 5 -X PUT localhost:3000/api/entries/2 -H Content-Type:application/json -H X-API-Key:local-dev-key -d '{"customer":"Sunita","amount":350,"type":"udhar"}'
+{"id":2,"customer":"Sunita","amount":350.0,"type":"udhar","note":"","created_at":"2026-10-07T09:35:12.957020Z"}
+$ curl -s -m 5 -o /dev/null -w 'DELETE /api/entries/4 -> HTTP %{http_code}
+' -X DELETE localhost:3000/api/entries/4 -H X-API-Key:local-dev-key
+DELETE /api/entries/4 -> HTTP 204
+
+$ curl -s -m 5 localhost:3000/api/customers
+[{"customer":"Ravi","balance":900.0,"reminder":"Ravi ji, ₹900 बाकी हैं."},{"customer":"Sunita","balance":350.0,"reminder":"Sunita ji, ₹350 बाकी हैं."},{"customer":"Ramesh","balance":300.0,"reminder":"Ramesh ji, ₹300 बाकी हैं."}]
+$ curl -s -m 5 -o /dev/null -w 'POST without API key -> HTTP %{http_code}
+' -X POST localhost:3000/api/entries -H Content-Type:application/json -d '{"customer":"X","amount":1,"type":"sale"}'
+POST without API key -> HTTP 401
+
+$ curl -s -m 5 localhost:8001/metrics | grep -E '^(http_requests_total|kirana_ledger_entries_total)' | head -8
+kirana_ledger_entries_total{type="udhar"} 3.0
+kirana_ledger_entries_total{type="payment"} 1.0
+kirana_ledger_entries_total{type="sale"} 1.0
+http_requests_total{handler="/api/info",method="GET",status="2xx"} 1.0
+http_requests_total{handler="/api/entries",method="POST",status="2xx"} 5.0
+http_requests_total{handler="/api/entries/{entry_id}",method="GET",status="2xx"} 1.0
+http_requests_total{handler="/api/entries/{entry_id}",method="PUT",status="2xx"} 1.0
+http_requests_total{handler="/api/entries/{entry_id}",method="DELETE",status="2xx"} 1.0
+
+$ docker compose -f final-devops-project/docker/docker-compose.yml exec -T backend id && docker compose -f final-devops-project/docker/docker-compose.yml exec -T frontend id
+uid=10001(appuser) gid=10001(appuser) groups=10001(appuser)
+uid=101(nginx) gid=101(nginx) groups=101(nginx)
+

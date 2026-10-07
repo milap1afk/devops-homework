@@ -7,11 +7,10 @@ metadata:
   labels:
     app.kubernetes.io/name: kirana
     app.kubernetes.io/instance: kirana
-    app.kubernetes.io/version: "1.0.2"
+    app.kubernetes.io/part-of: kirana
     app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: kirana-1.0.2
+    helm.sh/chart: kirana-2.0.0
 data:
-  APP_ENV: "minikube"
   SHOP_NAME: "Sharma Kirana Store"
   POSTGRES_HOST: kirana-postgres
   POSTGRES_DB: "ledger"

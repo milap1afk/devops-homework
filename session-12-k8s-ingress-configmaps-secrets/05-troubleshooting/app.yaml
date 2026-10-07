@@ -1,0 +1,39 @@
+# The application: every 5s it logs in to PostgreSQL with the credentials from Secret yatri-db-secret
+# (psql from the same postgres image stands in for the backend's DB driver).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: yatri-backend
+  namespace: s12-ts
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: yatri-backend}
+  template:
+    metadata:
+      labels: {app: yatri-backend}
+    spec:
+      containers:
+        - name: backend
+          image: postgres:17-alpine
+          command: ["sh", "-c"]
+          args:
+            - |
+              while true; do
+                if out=$(psql -h yatri-postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "select 'connected to '||current_database()||' as '||current_user" 2>&1); then
+                  echo "$(date +%T) OK: $out"
+                else
+                  echo "$(date +%T) DB ERROR: $out"
+                fi
+                sleep 5
+              done
+          env:
+            - name: POSTGRES_USER
+              valueFrom: {secretKeyRef: {name: yatri-db-secret, key: POSTGRES_USER}}
+            - name: POSTGRES_DB
+              valueFrom: {secretKeyRef: {name: yatri-db-secret, key: POSTGRES_DB}}
+            - name: PGPASSWORD          # libpq reads the password from PGPASSWORD
+              valueFrom: {secretKeyRef: {name: yatri-db-secret, key: POSTGRES_PASSWORD}}
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 100m, memory: 64Mi}

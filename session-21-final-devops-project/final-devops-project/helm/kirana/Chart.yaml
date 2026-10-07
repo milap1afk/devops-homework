@@ -1,6 +1,6 @@
 apiVersion: v2
 name: kirana
-description: Kirana ledger API + PostgreSQL, with ingress, autoscaling and monitoring
+description: Kirana ledger - FastAPI backend + Nginx frontend + PostgreSQL, with Ingress, HPA and monitoring
 type: application
-version: 1.0.2
-appVersion: "1.0.2"
+version: 2.0.0
+appVersion: "2.0.0"

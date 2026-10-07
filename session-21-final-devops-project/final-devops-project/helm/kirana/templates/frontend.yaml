@@ -1,0 +1,59 @@
+{{- $sel := dict "root" . "component" "frontend" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kirana.name" . }}-frontend
+  labels: {{- include "kirana.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/version: {{ .Values.frontend.image.tag | default .Chart.AppVersion | quote }}
+spec:
+  {{- if not .Values.frontend.autoscaling.enabled }}
+  replicas: {{ .Values.frontend.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels: {{- include "kirana.selector" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "kirana.labels" . | nindent 8 }}
+        app.kubernetes.io/component: frontend
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "kirana.podSecurity" . | nindent 8 }}
+        runAsUser: 101
+      containers:
+        - name: frontend
+          image: {{ include "kirana.frontendImage" . }}
+          imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          ports: [{ name: http, containerPort: 8080 }]
+          env:
+            - name: BACKEND_URL     # used by the in-container /api proxy (the Ingress also routes /api directly)
+              value: "http://{{ include "kirana.name" . }}-backend:{{ .Values.service.backendPort }}"
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources: {{- toYaml .Values.frontend.resources | nindent 12 }}
+          securityContext: {{- include "kirana.containerSecurity" . | nindent 12 }}
+          volumeMounts:   # nginx needs a few writable paths with a read-only root filesystem
+            - { name: tmp, mountPath: /tmp }
+            - { name: conf, mountPath: /etc/nginx/conf.d }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - { name: conf, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kirana.name" . }}-frontend
+  labels: {{- include "kirana.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  type: ClusterIP
+  selector: {{- include "kirana.selector" $sel | nindent 4 }}
+  ports:
+    - { name: http, port: {{ .Values.service.frontendPort }}, targetPort: http }

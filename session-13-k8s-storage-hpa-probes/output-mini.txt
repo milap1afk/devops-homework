@@ -1,0 +1,60 @@
+################ 5.1 Namespace ################
+$ kubectl apply -f 03-mini-project/namespace.yaml
+namespace/s13-mini created
+
+################ 5.2 PersistentVolumeClaim ################
+$ kubectl apply -f 03-mini-project/pvc.yaml
+persistentvolumeclaim/web-data created
+
+$ kubectl -n s13-mini get pvc
+NAME       STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+web-data   Bound    pvc-93d0e094-8ba9-43a7-baf3-499bd0b4462e   500Mi      RWO            standard       <unset>                 30s
+
+$ kubectl get storageclass
+NAME                 PROVISIONER                RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION   AGE
+fast-retain          k8s.io/minikube-hostpath   Retain          Immediate           true                   117m
+standard (default)   k8s.io/minikube-hostpath   Delete          Immediate           false                  3h16m
+
+################ 5.3 Deployment + Service ################
+$ kubectl apply -f 03-mini-project/deployment.yaml -f 03-mini-project/service.yaml
+deployment.apps/web-app created
+service/web-service created
+
+$ kubectl -n s13-mini rollout status deploy/web-app --timeout=240s
+Waiting for deployment spec update to be observed...
+Waiting for deployment "web-app" rollout to finish: 0 out of 2 new replicas have been updated...
+Waiting for deployment "web-app" rollout to finish: 0 of 2 updated replicas are available...
+Waiting for deployment "web-app" rollout to finish: 1 of 2 updated replicas are available...
+deployment "web-app" successfully rolled out
+
+$ kubectl -n s13-mini get pods -o wide
+NAME                      READY   STATUS    RESTARTS   AGE   IP            NODE       NOMINATED NODE   READINESS GATES
+web-app-d45775485-pzvng   1/1     Running   0          24s   10.244.0.55   minikube   <none>           <none>
+web-app-d45775485-vlx9j   1/1     Running   0          24s   10.244.0.54   minikube   <none>           <none>
+
+$ kubectl -n s13-mini get svc web-service && kubectl -n s13-mini get endpointslices -l kubernetes.io/service-name=web-service
+NAME          TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
+web-service   ClusterIP   10.111.231.18   <none>        80/TCP    25s
+NAME                ADDRESSTYPE   PORTS   ENDPOINTS                 AGE
+web-service-xqh65   IPv4          80      10.244.0.55,10.244.0.54   25s
+
+$ kubectl -n s13-mini describe pod web-app-d45775485-pzvng | grep -E '^    (Startup|Readiness|Liveness):|Requests:|Limits:|cpu:|memory:|/data from'
+    Limits:
+      cpu:     200m
+      memory:  128Mi
+    Requests:
+      cpu:        100m
+      memory:     64Mi
+    Liveness:     http-get http://:80/ delay=5s timeout=2s period=5s successThreshold=1 failureThreshold=3
+    Readiness:    http-get http://:80/ delay=5s timeout=2s period=5s successThreshold=1 failureThreshold=2
+    Startup:      http-get http://:80/ delay=0s timeout=1s period=2s successThreshold=1 failureThreshold=30
+      /data from persistent-storage (rw)
+
+################ 5.4 HorizontalPodAutoscaler ################
+$ kubectl apply -f 03-mini-project/hpa.yaml
+horizontalpodautoscaler.autoscaling/web-app-hpa created
+
+# waiting for metrics-server to report CPU for the Pods...
+error: Get "https://127.0.0.1:32771/apis/autoscaling/v2/namespaces/s13-mini/horizontalpodautoscalers/web-app-hpa": net/http: TLS handshake timeout - error from a previous attempt: http2: client connection lost
+Unable to connect to the server: net/http: TLS handshake timeout
+Unable to connect to the server: net/http: TLS handshake timeout

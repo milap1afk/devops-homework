@@ -6,27 +6,27 @@ metadata:
   labels:
     app.kubernetes.io/name: kirana
     app.kubernetes.io/instance: kirana
-    app.kubernetes.io/version: "1.0.2"
+    app.kubernetes.io/part-of: kirana
     app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: kirana-1.0.2
+    helm.sh/chart: kirana-2.0.0
 spec:
   groups:
     - name: kirana.rules
       rules:
-        - alert: KiranaApiDown
-          expr: sum(up{service="kirana-api"}) == 0 or absent(up{service="kirana-api"})
+        - alert: KiranaBackendDown
+          expr: sum(up{service="kirana-backend"}) == 0 or absent(up{service="kirana-backend"})
           for: 1m
           labels: { severity: critical }
-          annotations: { summary: "Kirana API has no healthy scrape targets" }
+          annotations: { summary: "Kirana backend has no healthy scrape targets" }
         - alert: KiranaHighErrorRate
           expr: |
-            sum(rate(kirana_http_requests_total{status=~"5.."}[5m]))
-              / clamp_min(sum(rate(kirana_http_requests_total[5m])), 1e-9) > 0.05
+            sum(rate(http_requests_total{service="kirana-backend", status="5xx"}[5m]))
+              / clamp_min(sum(rate(http_requests_total{service="kirana-backend"}[5m])), 1e-9) > 0.05
           for: 2m
           labels: { severity: warning }
           annotations: { summary: "More than 5% of Kirana API requests are failing" }
         - alert: KiranaSlowRequests
-          expr: histogram_quantile(0.95, sum(rate(kirana_http_request_duration_seconds_bucket[5m])) by (le)) > 0.5
+          expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service="kirana-backend"}[5m])) by (le)) > 0.5
           for: 5m
           labels: { severity: warning }
           annotations: { summary: "Kirana API p95 latency above 500ms" }

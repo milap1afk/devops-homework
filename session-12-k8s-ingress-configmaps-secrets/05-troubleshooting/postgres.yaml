@@ -1,0 +1,55 @@
+# The database side of the scenario: a PostgreSQL server whose password was set CORRECTLY
+# (stringData, so no base64 / echo involved). Namespace s12-ts.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: s12-ts
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-server-secret
+  namespace: s12-ts
+type: Opaque
+stringData:
+  POSTGRES_USER: yatri_admin
+  POSTGRES_PASSWORD: secretpassword
+  POSTGRES_DB: yatri_production_db
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: yatri-postgres
+  namespace: s12-ts
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: yatri-postgres}
+  template:
+    metadata:
+      labels: {app: yatri-postgres}
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          envFrom:
+            - secretRef: {name: postgres-server-secret}
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec: {command: ["pg_isready", "-U", "yatri_admin", "-d", "yatri_production_db"]}
+            periodSeconds: 3
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 300m, memory: 256Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: yatri-postgres
+  namespace: s12-ts
+spec:
+  selector: {app: yatri-postgres}
+  ports:
+    - port: 5432
+      targetPort: 5432

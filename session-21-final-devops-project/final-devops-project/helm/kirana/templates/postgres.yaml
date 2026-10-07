@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/component: postgres
 spec:
   clusterIP: None
-  selector: {{- include "kirana.dbSelector" . | nindent 4 }}
+  selector: {{- include "kirana.selector" (dict "root" . "component" "postgres") | nindent 4 }}
   ports:
     - { name: postgres, port: 5432 }
 ---
@@ -21,7 +21,7 @@ spec:
   serviceName: {{ include "kirana.name" . }}-postgres
   replicas: 1
   selector:
-    matchLabels: {{- include "kirana.dbSelector" . | nindent 6 }}
+    matchLabels: {{- include "kirana.selector" (dict "root" . "component" "postgres") | nindent 6 }}
   template:
     metadata:
       labels: {{- include "kirana.labels" . | nindent 8 }}

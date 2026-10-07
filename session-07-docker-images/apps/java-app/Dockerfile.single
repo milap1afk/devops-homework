@@ -1,0 +1,8 @@
+# Single-stage variant, built only to compare image size:
+# the full JDK (compiler + tools) stays in the final image.
+FROM eclipse-temurin:21-jdk
+WORKDIR /app
+COPY HelloWorld.java .
+RUN javac HelloWorld.java
+EXPOSE 8080
+CMD ["java", "HelloWorld"]

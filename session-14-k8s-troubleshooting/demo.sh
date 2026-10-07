@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Session 14 troubleshooting lab on minikube. Usage: ./demo.sh [commands|01|02|...|09]
+# Session 14 troubleshooting lab on minikube. Usage: ./demo.sh [commands|01|02|...|09|mini]
 cd "$(dirname "$0")"
 run() { echo "\$ $*"; eval "$@" 2>&1; echo; }
 say() { echo "# $*"; }
@@ -231,5 +231,71 @@ s09() {
   run 'kubectl -n s14 exec mailer -- sh -c "echo SMTP_PASSWORD is set: \${SMTP_PASSWORD:+yes}"'
 }
 
-parts=${1:-"commands 01 02 03 04 05 06 07 08 09"}
+smini() {
+  MP=mini-project; NS=s14-mini; N="kubectl -n $NS"
+  kubectl delete ns $NS --ignore-not-found --wait --timeout=180s >/dev/null 2>&1; kubectl create ns $NS >/dev/null
+  probe() { $N run probe-$RANDOM --image=busybox:1.36 --restart=Never --rm -i --quiet -- sh -c "$1" 2>&1; }
+  say "================ 1. DEPLOY ================"
+  run "$N apply -f $MP/deployment.yaml -f $MP/service.yaml"
+  run "$N rollout status deploy/troubleshooting-app --timeout=180s"
+  run "$N get pods"
+  run "$N get service"
+  say "================ 2. CHECK THE APPLICATION ================"
+  run "$N get pods -o wide"
+  P=$($N get pod -l app=troubleshooting-app -o jsonpath='{.items[0].metadata.name}')
+  run "$N describe pod $P | sed -n '1,9p;/^    Image:/p;/^    State:/,/^    Ready:/p;/^Conditions:/,/^Volumes:/p;/^Events:/,\$p' | grep -v '^Volumes:'"
+  run "$N logs $P --tail=4"
+  run "$N exec $P -- curl -s localhost | grep -E '<title>|<h1>'   # (README: exec -it ... -- bash, then curl localhost)"
+  say "================ 3-4. CHECK THE SERVICE AND ENDPOINTS ================"
+  run "$N describe service troubleshooting-service | grep -E '^(Name|Selector|Type|IP|Port|TargetPort|Endpoints):'"
+  run "$N get endpoints troubleshooting-service"
+  run "$N get endpointslices -l kubernetes.io/service-name=troubleshooting-service"
+  run "probe 'wget -qO- -T 3 http://troubleshooting-service | grep -o \"<title>.*</title>\"'"
+
+  say "================ 5. CREATE A BROKEN POD ================"
+  run "$N apply -f $MP/broken-pod.yaml"
+  for i in $(seq 40); do $N get pod project-broken-pod --no-headers | grep -qE 'ImagePullBackOff' && break; sleep 3; done
+  say "================ 6. TROUBLESHOOT IT (YAML not changed yet) ================"
+  run "$N get pod project-broken-pod"
+  run "$N describe pod project-broken-pod | sed -n '/^Containers:/,/^    Ready:/p;/^Events:/,\$p'"
+  run "$N get pod project-broken-pod -o jsonpath='{.spec.containers[0].image}{\"\\n\"}{.status.containerStatuses[0].state.waiting.reason}: {.status.containerStatuses[0].state.waiting.message}{\"\\n\"}' | cut -c1-230"
+  run "$N events --for pod/project-broken-pod --types=Warning"
+  run 'docker manifest inspect nginx:this-tag-does-not-exist 2>&1 | head -1'
+  run 'docker manifest inspect nginx:1.27 >/dev/null && echo "nginx:1.27 exists"'
+  say "ROOT CAUSE: tag 'this-tag-does-not-exist' is not published for the nginx repository -> registry 'not found' -> ErrImagePull -> ImagePullBackOff"
+  say "FIX: use a tag that exists. (A Pod's image can be changed in place with 'kubectl set image', but here the YAML is fixed and re-applied)"
+  run "diff $MP/broken-pod.yaml $MP/fixed-pod.yaml"
+  run "$N delete pod project-broken-pod --wait && $N apply -f $MP/fixed-pod.yaml"
+  run "$N wait --for=condition=Ready pod/project-broken-pod --timeout=180s"
+  say "VERIFY"
+  run "$N get pod project-broken-pod -o wide"
+  run "$N events --for pod/project-broken-pod | tail -4"
+
+  say "================ 8. SERVICE TROUBLESHOOTING CHALLENGE: break the selector ================"
+  run "diff $MP/service.yaml $MP/broken-service.yaml"
+  run "$N apply -f $MP/broken-service.yaml"
+  sleep 3
+  run "$N get service"
+  run "$N get endpoints troubleshooting-service"
+  run "probe 'wget -qO- -T 3 http://troubleshooting-service || echo \"request failed (exit \$?)\"'"
+  say "================ 9. FIND THE ROOT CAUSE ================"
+  run "$N get pods --show-labels"
+  run "$N describe service troubleshooting-service | grep -E '^(Selector|Endpoints):'"
+  run "$N get pods -l app=wrong-app"
+  say "ROOT CAUSE: Service selector app=wrong-app matches no Pod (Pods are labelled app=troubleshooting-app) -> no endpoints -> nothing to forward to"
+  say "FIX: restore the selector"
+  run "$N apply -f $MP/service.yaml"
+  sleep 3
+  say "VERIFY"
+  run "$N describe service troubleshooting-service | grep -E '^(Selector|Endpoints):'"
+  run "$N get endpoints troubleshooting-service"
+  run "probe 'wget -qO- -T 3 http://troubleshooting-service | grep -o \"<title>.*</title>\"'"
+  say "================ 10. FINAL CHECKLIST: events + DNS ================"
+  run "$N get events --sort-by=.lastTimestamp | tail -8"
+  run "probe 'nslookup troubleshooting-service; cat /etc/resolv.conf'"
+  run "$N get pods -o wide"
+  kubectl delete ns $NS --wait=false >/dev/null
+}
+
+parts=${1:-"commands 01 02 03 04 05 06 07 08 09 mini"}
 for part in $parts; do f=$part; [ "$part" != commands ] && f=s$part; $f > output-$part.txt 2>&1; echo "== $part ($(wc -l < output-$part.txt) lines)"; done

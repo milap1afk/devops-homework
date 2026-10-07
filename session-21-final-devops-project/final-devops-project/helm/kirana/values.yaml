@@ -1,45 +1,49 @@
-# ---------------------------------------------------------------- application
-image:
-  repository: ghcr.io/milap1afk/kirana-final
-  tag: ""                 # defaults to .Chart.AppVersion; CI sets it to the git SHA
-  pullPolicy: IfNotPresent
+# ---------------------------------------------------------------- images (CI sets the tags to the git SHA)
+backend:
+  image:
+    repository: ghcr.io/milap1afk/kirana-backend
+    tag: ""                 # defaults to .Chart.AppVersion
+    pullPolicy: IfNotPresent
+  replicaCount: 2           # used when autoscaling is off
+  autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 5, targetCPUUtilizationPercentage: 60 }
+  resources:
+    requests: { cpu: 50m, memory: 96Mi }
+    limits:   { cpu: 500m, memory: 256Mi }
+  probes:
+    liveness:  { path: /health, initialDelaySeconds: 5, periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3 }
+    readiness: { path: /ready,  initialDelaySeconds: 3, periodSeconds: 5,  timeoutSeconds: 3 }
+    startup:   { path: /health, failureThreshold: 30, periodSeconds: 2, timeoutSeconds: 3 }
 
-replicaCount: 2           # ignored when autoscaling.enabled
+frontend:
+  image:
+    repository: ghcr.io/milap1afk/kirana-frontend
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 4, targetCPUUtilizationPercentage: 70 }
+  resources:
+    requests: { cpu: 10m, memory: 16Mi }
+    limits:   { cpu: 200m, memory: 64Mi }
 
-config:                   # -> ConfigMap -> env vars
+config:                     # -> ConfigMap -> backend env
   SHOP_NAME: "Kirana Store"
-  APP_ENV: "production"
 
 secrets:
-  # Use an existing Secret (GitOps: created out-of-band / by Sealed Secrets / External Secrets).
-  # It must contain keys API_KEY and POSTGRES_PASSWORD.
+  # Use an existing Secret (GitOps: created out-of-band / Sealed Secrets / External Secrets)
+  # with keys API_KEY and POSTGRES_PASSWORD ...
   existingSecret: ""
-  # ...or let the chart create one. Values are REQUIRED at install time (--set), never stored in Git.
+  # ... or let the chart create one. REQUIRED at install time (--set); never stored in Git.
   apiKey: ""
   postgresPassword: ""
 
-resources:
-  requests: { cpu: 50m, memory: 96Mi }
-  limits:   { cpu: 500m, memory: 192Mi }
-
-probes:
-  liveness:  { path: /health, initialDelaySeconds: 5, periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3 }
-  readiness: { path: /ready,  initialDelaySeconds: 3, periodSeconds: 5,  timeoutSeconds: 3 }
-  startup:   { path: /health, failureThreshold: 30, periodSeconds: 2, timeoutSeconds: 3 }
-
 service:
-  port: 80
+  backendPort: 80
+  frontendPort: 80
 
 ingress:
   enabled: true
   className: nginx
-  host: kirana.local
-
-autoscaling:
-  enabled: true
-  minReplicas: 2
-  maxReplicas: 5
-  targetCPUUtilizationPercentage: 60
+  host: kirana.local        # /api -> backend, / -> frontend
 
 # ---------------------------------------------------------------- database
 postgres:
@@ -47,7 +51,7 @@ postgres:
   database: ledger
   user: kirana
   storage: 1Gi
-  storageClassName: ""    # "" = cluster default StorageClass
+  storageClassName: ""      # "" = cluster default StorageClass
   probes:
     # liveness restarts the DB, so it must be patient: a busy node must not kill a healthy database
     liveness:  { initialDelaySeconds: 30, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 6 }
@@ -55,6 +59,6 @@ postgres:
 
 # ---------------------------------------------------------------- monitoring
 monitoring:
-  serviceMonitor: true    # needs the Prometheus Operator CRDs (kube-prometheus-stack)
+  serviceMonitor: true      # needs the Prometheus Operator CRDs (kube-prometheus-stack)
   prometheusRule: true
-  grafanaDashboard: true  # ConfigMap picked up by the Grafana sidecar
+  grafanaDashboard: true    # ConfigMap picked up by the Grafana sidecar
