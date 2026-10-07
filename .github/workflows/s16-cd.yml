@@ -1,0 +1,79 @@
+# Session 16 - Continuous Deployment: runs after CI succeeds on main,
+# deploys the exact image CI built to a Kubernetes cluster and verifies it.
+name: "S16 CD"
+
+on:
+  workflow_run:
+    workflows: ["S16 CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  APP_DIR: session-16-cicd-github-actions
+  IMAGE: ghcr.io/${{ github.repository_owner }}/kirana-api
+
+jobs:
+  deploy:
+    name: Deploy to Kubernetes (kind)
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SHA }}
+
+      - name: Create a Kubernetes cluster (kind)
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: dev
+
+      - name: Pull the image built by CI and load it into the cluster
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull "$IMAGE:$SHA"
+          kind load docker-image "$IMAGE:$SHA" --name dev
+
+      - name: Create the app Secret from a GitHub Actions secret
+        env:
+          API_KEY: ${{ secrets.KIRANA_API_KEY }}
+        run: |
+          test -n "$API_KEY" || { echo "::error::repository secret KIRANA_API_KEY is not set"; exit 1; }
+          kubectl create secret generic kirana-api-secret --from-literal=API_KEY="$API_KEY" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy
+        run: |
+          sed "s|IMAGE_PLACEHOLDER|$IMAGE:$SHA|" $APP_DIR/k8s/deployment.yaml | kubectl apply -f -
+          kubectl apply -f $APP_DIR/k8s/service.yaml
+          kubectl rollout status deployment/kirana-api --timeout=120s
+          kubectl get deploy,pods,svc -o wide
+
+      - name: Verify deployment (smoke test through the Service)
+        env:
+          API_KEY: ${{ secrets.KIRANA_API_KEY }}
+        run: |
+          kubectl port-forward svc/kirana-api 8080:80 &
+          sleep 3
+          curl -fs localhost:8080/health
+          curl -fs -X POST localhost:8080/entries -H 'Content-Type: application/json' \
+               -H "X-API-Key: $API_KEY" -d '{"customer":"Ramesh bhai","amount":500,"type":"udhar"}'
+          echo
+          curl -fs localhost:8080/balance/Ramesh | tee balance.json
+          grep -q '"balance":500' balance.json
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8080/entries \
+                 -H 'Content-Type: application/json' -d '{"customer":"x","amount":1,"type":"sale"}')
+          echo "request without API key -> HTTP $code"; test "$code" = 401
+
+      - name: Job summary
+        run: |
+          echo "### Deployed :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          echo "Image \`$IMAGE:$SHA\` is running in cluster **dev**." >> "$GITHUB_STEP_SUMMARY"
+          kubectl get pods -l app=kirana-api -o wide | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY"

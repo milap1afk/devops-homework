@@ -1,0 +1,4 @@
+app/tests
+app/.flake8
+**/__pycache__
+**/.pytest_cache
