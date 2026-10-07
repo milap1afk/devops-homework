@@ -7,3 +7,5 @@ dist/
 crash.log
 *.tfplan
 .env
+junit.xml
+coverage/

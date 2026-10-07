@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kirana
+  labels:
+    # Pod Security Admission: reject Pods that don't meet the "restricted" profile
+    pod-security.kubernetes.io/enforce: restricted

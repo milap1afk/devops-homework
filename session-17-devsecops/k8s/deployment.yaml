@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kirana-catalog
+  namespace: kirana
+  labels: { app: kirana-catalog }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: kirana-catalog }
+  template:
+    metadata:
+      labels: { app: kirana-catalog }
+    spec:
+      automountServiceAccountToken: false     # the app never talks to the K8s API
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000                       # the "node" user in the image
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: api
+          image: IMAGE_PLACEHOLDER            # set by the pipeline to the scanned image digest/tag
+          ports: [{ containerPort: 3000 }]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          readinessProbe:
+            httpGet: { path: /health, port: 3000 }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: 3000 }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 250m, memory: 128Mi }

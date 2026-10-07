@@ -1,0 +1,9 @@
+# Gitleaks config: use all built-in rules (AWS keys, GitHub tokens, private keys, generic API keys, ...)
+title = "kirana gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "test fixtures"
+paths = ['''app/test/''']

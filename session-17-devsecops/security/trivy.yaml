@@ -1,0 +1,10 @@
+# Trivy settings shared by the SCA (filesystem) and container image scans
+severity:
+  - CRITICAL
+  - HIGH
+exit-code: 1          # non-zero exit = the scan job fails = the security gate blocks the release
+vulnerability:
+  ignore-unfixed: true  # only block on vulnerabilities that have a fix available
+scan:
+  scanners:
+    - vuln

@@ -1,0 +1,291 @@
+# Session 17 - Complete CI/CD + DevSecOps
+# Code -> Build -> Unit Test -> SAST -> SCA -> Secret Scan -> Docker Build -> Image Scan
+#      -> Security Gate -> Push Image -> Deploy to Kubernetes
+name: "S17 DevSecOps"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "session-17-devsecops/**"
+      - ".github/workflows/s17-devsecops.yml"
+  pull_request:
+    paths:
+      - "session-17-devsecops/**"
+  workflow_dispatch:
+    inputs:
+      inject_vulnerability:
+        description: "Demo: add a known-vulnerable dependency (lodash 4.17.4) to prove the security gate blocks the release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  APP_DIR: session-17-devsecops
+  IMAGE: ghcr.io/${{ github.repository_owner }}/kirana-catalog
+  TAG: ${{ github.sha }}
+
+jobs:
+  # ---------------------------------------------------------------- Build + Unit Test
+  build-test:
+    name: "1. Build & unit test"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.APP_DIR }}/app
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ env.APP_DIR }}/app/package-lock.json
+      - name: Install (npm ci)
+        run: npm ci
+      - name: Unit tests + coverage (threshold 80%)
+        run: npm test
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: s17-test-results
+          path: |
+            ${{ env.APP_DIR }}/app/junit.xml
+            ${{ env.APP_DIR }}/app/coverage/lcov.info
+
+  # ---------------------------------------------------------------- SAST
+  sast:
+    name: "2. SAST (Semgrep)"
+    needs: build-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # upload SARIF to the Security tab
+    container:
+      image: semgrep/semgrep:1.179.0
+    steps:
+      - uses: actions/checkout@v7
+      - name: Semgrep scan (JavaScript, Node.js, Express, Dockerfile, secrets rules)
+        run: |
+          cp $APP_DIR/security/.semgrepignore .semgrepignore
+          semgrep scan \
+            --config p/javascript --config p/nodejs --config p/expressjs \
+            --config p/dockerfile --config p/secrets \
+            --metrics off --error \
+            --sarif-output semgrep.sarif --text \
+            $APP_DIR
+      - name: Upload SARIF to GitHub code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: s17-sast-report
+          path: semgrep.sarif
+
+  # ---------------------------------------------------------------- SCA
+  sca:
+    name: "3. SCA (npm audit + Trivy fs)"
+    needs: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: "Demo only: inject a known-vulnerable dependency"
+        if: ${{ inputs.inject_vulnerability }}
+        working-directory: ${{ env.APP_DIR }}/app
+        run: npm install --save lodash@4.17.4 && grep lodash package.json
+      - name: npm audit (production dependencies, fail on high+)
+        working-directory: ${{ env.APP_DIR }}/app
+        run: npm audit --omit=dev --audit-level=high
+      - name: Trivy filesystem scan of dependencies (fail on fixable HIGH/CRITICAL)
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: ${{ env.APP_DIR }}/app
+          trivy-config: ${{ env.APP_DIR }}/security/trivy.yaml
+          format: table
+
+  # ---------------------------------------------------------------- Secret scanning
+  secret-scan:
+    name: "4. Secret scan (Gitleaks)"
+    needs: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # full history: secrets removed in later commits are still leaks
+      - name: Gitleaks - git history of this session
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 git /repo \
+            --log-opts="-- $APP_DIR" --config /repo/$APP_DIR/security/.gitleaks.toml \
+            --redact --verbose --exit-code 1
+      - name: Gitleaks - current files
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 dir /repo/$APP_DIR \
+            --config /repo/$APP_DIR/security/.gitleaks.toml --redact --verbose --exit-code 1
+
+  # ---------------------------------------------------------------- Docker build
+  docker-build:
+    name: "5. Docker build"
+    needs: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build image (not pushed yet - it must pass the security gate first)
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ env.APP_DIR }}
+          build-args: APP_VERSION=${{ github.sha }}
+          tags: ${{ env.IMAGE }}:${{ env.TAG }}
+          outputs: type=docker,dest=${{ runner.temp }}/image.tar
+          cache-from: type=gha,scope=s17
+          cache-to: type=gha,scope=s17,mode=max
+      - uses: actions/upload-artifact@v7
+        with:
+          name: s17-image
+          path: ${{ runner.temp }}/image.tar
+          retention-days: 3
+
+  # ---------------------------------------------------------------- Container image scan
+  image-scan:
+    name: "6. Container image scan (Trivy)"
+    needs: docker-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: s17-image
+          path: ${{ runner.temp }}
+      - name: Trivy image scan (fail on fixable HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          input: ${{ runner.temp }}/image.tar
+          trivy-config: ${{ env.APP_DIR }}/security/trivy.yaml
+          format: table
+      - name: Trivy SBOM (CycloneDX)
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          input: ${{ runner.temp }}/image.tar
+          format: cyclonedx
+          output: sbom.cdx.json
+          skip-setup-trivy: true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: s17-sbom
+          path: sbom.cdx.json
+
+  # ---------------------------------------------------------------- Security gate
+  security-gate:
+    name: "7. Security gate"
+    needs: [sast, sca, secret-scan, image-scan]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate all security checks
+        env:
+          SAST: ${{ needs.sast.result }}
+          SCA: ${{ needs.sca.result }}
+          SECRETS: ${{ needs.secret-scan.result }}
+          IMAGE_SCAN: ${{ needs.image-scan.result }}
+        run: |
+          icon() { [ "$1" = success ] && echo "✅ pass" || echo "❌ $1"; }
+          {
+            echo "## 🔐 Security gate"
+            echo "| Check | Result |"
+            echo "|---|---|"
+            echo "| SAST (Semgrep) | $(icon "$SAST") |"
+            echo "| SCA (npm audit + Trivy fs) | $(icon "$SCA") |"
+            echo "| Secret scan (Gitleaks) | $(icon "$SECRETS") |"
+            echo "| Container image scan (Trivy) | $(icon "$IMAGE_SCAN") |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for r in "$SAST" "$SCA" "$SECRETS" "$IMAGE_SCAN"; do
+            if [ "$r" != success ]; then
+              echo "::error::Security gate FAILED - image will NOT be pushed or deployed"
+              echo "**Result: BLOCKED** - image not pushed, not deployed." >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+          done
+          echo "Security gate PASSED"
+          echo "**Result: PASSED** - image may be pushed and deployed." >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------- Push image
+  push-image:
+    name: "8. Push image to GHCR"
+    needs: [security-gate, docker-build]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: s17-image
+          path: ${{ runner.temp }}
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Load, tag and push the exact image that was scanned
+        run: |
+          docker load -i ${{ runner.temp }}/image.tar
+          docker tag $IMAGE:$TAG $IMAGE:latest
+          docker push $IMAGE:$TAG
+          docker push $IMAGE:latest
+          echo "Pushed \`$IMAGE:$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------- Deploy
+  deploy:
+    name: "9. Deploy to Kubernetes"
+    needs: push-image
+    runs-on: ubuntu-latest
+    environment: dev
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Create Kubernetes cluster (kind)
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: dev
+      - name: Pull the pushed image and load it into the cluster
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull $IMAGE:$TAG
+          kind load docker-image $IMAGE:$TAG --name dev
+      - name: Apply manifests
+        run: |
+          kubectl apply -f $APP_DIR/k8s/namespace.yaml
+          sed "s|IMAGE_PLACEHOLDER|$IMAGE:$TAG|" $APP_DIR/k8s/deployment.yaml | kubectl apply -f -
+          kubectl apply -f $APP_DIR/k8s/service.yaml -f $APP_DIR/k8s/networkpolicy.yaml
+          kubectl -n kirana rollout status deployment/kirana-catalog --timeout=120s
+          kubectl -n kirana get deploy,pods,svc,networkpolicy -o wide
+      - name: Smoke test
+        run: |
+          kubectl -n kirana port-forward svc/kirana-catalog 8080:80 &
+          sleep 3
+          curl -fs localhost:8080/health
+          curl -fs "localhost:8080/products/1/total?qty=2" | tee total.json
+          grep -q '"total":490' total.json
+      - name: Verify Pod security settings
+        run: |
+          kubectl -n kirana get pod -l app=kirana-catalog -o jsonpath='{range .items[0].spec.containers[0].securityContext}{"readOnlyRootFilesystem="}{.readOnlyRootFilesystem}{" allowPrivilegeEscalation="}{.allowPrivilegeEscalation}{" drop="}{.capabilities.drop}{end}{"\n"}'
+          kubectl -n kirana exec deploy/kirana-catalog -- node -e "console.log('uid', process.getuid())"
+          echo "### Deployed :rocket: \`$IMAGE:$TAG\` to namespace \`kirana\` (PSA restricted)" >> "$GITHUB_STEP_SUMMARY"
