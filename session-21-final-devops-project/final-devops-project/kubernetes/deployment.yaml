@@ -1,4 +1,4 @@
-# Rendered from ../helm/kirana (helm template kirana helm/kirana -f values-minikube.yaml). Edit the chart, not this file.
+# Rendered from ../helm/kirana by kubernetes/render.sh. Edit the chart, not this file.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -6,9 +6,9 @@ metadata:
   labels:
     app.kubernetes.io/name: kirana
     app.kubernetes.io/instance: kirana
-    app.kubernetes.io/version: "1.0.1"
+    app.kubernetes.io/version: "1.0.2"
     app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: kirana-1.0.0
+    helm.sh/chart: kirana-1.0.2
     app.kubernetes.io/component: api
 spec:
   selector:
@@ -20,12 +20,12 @@ spec:
       labels:
         app.kubernetes.io/name: kirana
         app.kubernetes.io/instance: kirana
-        app.kubernetes.io/version: "1.0.1"
+        app.kubernetes.io/version: "1.0.2"
         app.kubernetes.io/managed-by: Helm
-        helm.sh/chart: kirana-1.0.0
+        helm.sh/chart: kirana-1.0.2
         app.kubernetes.io/component: api
       annotations:
-        checksum/config: 6d622d24984b491082b132b4b5289986348f876276293a96f80223ccff6c9222
+        checksum/config: aaf0d3888987155ec622272478f1982a4e6dc349d803a49451ee03ca0e21b091
     spec:
       automountServiceAccountToken: false
       securityContext:
@@ -34,7 +34,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: api
-          image: "ghcr.io/milap1afk/kirana-final:1.0.1"
+          image: "ghcr.io/milap1afk/kirana-final:1.0.2"
           imagePullPolicy: Never
           ports:
             - { name: http, containerPort: 8000 }
@@ -48,7 +48,7 @@ spec:
             - name: DATABASE_URL
               value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):5432/$(POSTGRES_DB)"
             - name: APP_VERSION
-              value: "1.0.1"
+              value: "1.0.2"
           startupProbe:
             httpGet: { path: /health, port: http }
             failureThreshold: 30

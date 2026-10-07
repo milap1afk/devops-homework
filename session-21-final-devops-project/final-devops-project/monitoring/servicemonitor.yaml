@@ -1,4 +1,4 @@
-# Rendered from ../helm/kirana (helm template kirana helm/kirana -f values-minikube.yaml). Edit the chart, not this file.
+# Rendered from ../helm/kirana by kubernetes/render.sh. Edit the chart, not this file.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -6,9 +6,9 @@ metadata:
   labels:
     app.kubernetes.io/name: kirana
     app.kubernetes.io/instance: kirana
-    app.kubernetes.io/version: "1.0.1"
+    app.kubernetes.io/version: "1.0.2"
     app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: kirana-1.0.0
+    helm.sh/chart: kirana-1.0.2
 spec:
   selector:
     matchLabels:

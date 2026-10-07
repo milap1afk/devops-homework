@@ -3,3 +3,40 @@ $ sed -i '' 's/tag: "1.0.0"/tag: "1.0.1"/' final-devops-project/helm/kirana/valu
   tag: "1.0.1"
 
 $ git -C .. add -A && git -C .. commit -qm 'Session 21: release 1.0.1 - lazy DB schema so the API boots before PostgreSQL' && git -C .. push -q origin main && git -C .. log --oneline -1
+da4c893 Session 21: release 1.0.1 - lazy DB schema so the API boots before PostgreSQL
+
+$ kubectl -n argocd get application kirana-final
+NAME           SYNC STATUS   HEALTH STATUS
+kirana-final   Synced        Progressing
+
+$ kubectl -n kirana get deploy kirana-api -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,IMAGE:.spec.template.spec.containers[0].image
+(eval):1: no matches found: custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,IMAGE:.spec.template.spec.containers[0].image
+
+$ kubectl -n kirana get pods
+NAME                          READY   STATUS        RESTARTS        AGE
+kirana-api-5b469b9656-d5gz6   1/1     Running       0               29s
+kirana-api-5b469b9656-wphkg   1/1     Running       0               8s
+kirana-api-85dc584c-7bj2c     1/1     Terminating   4 (5m25s ago)   6m38s
+kirana-postgres-0             1/1     Running       0               23s
+
+################ Prove the fix: kill PostgreSQL under the running app ################
+$ kubectl -n kirana delete pod kirana-postgres-0 --wait=false
+pod "kirana-postgres-0" deleted from kirana namespace
+
+$ kubectl -n kirana get pods
+NAME                          READY   STATUS              RESTARTS        AGE
+kirana-api-5b469b9656-d5gz6   1/1     Running             0               33s
+kirana-api-5b469b9656-wphkg   1/1     Running             0               12s
+kirana-api-85dc584c-7bj2c     1/1     Terminating         4 (5m29s ago)   6m42s
+kirana-postgres-0             0/1     ContainerCreating   0               2s
+
+$ kubectl -n kirana get endpointslices -l kubernetes.io/service-name=kirana-api -o custom-columns=NAME:.metadata.name,READY:.endpoints[*].conditions.ready
+(eval):1: no matches found: custom-columns=NAME:.metadata.name,READY:.endpoints[*].conditions.ready
+
+$ kubectl -n kirana get pods
+NAME                          READY   STATUS    RESTARTS   AGE
+kirana-api-5b469b9656-d5gz6   1/1     Running   0          51s
+kirana-api-5b469b9656-wphkg   1/1     Running   0          30s
+kirana-postgres-0             1/1     Running   0          20s
+
+# RESTARTS stay 0: the API stayed alive (liveness /health OK) and was only taken out of the Service while /ready returned 503

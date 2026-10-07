@@ -1,0 +1,40 @@
+$ kubectl -n kirana get deploy kirana-api -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,IMAGE:.spec.template.spec.containers[0].image
+NAME         READY   IMAGE
+kirana-api   2       ghcr.io/milap1afk/kirana-final:1.0.1
+
+$ kubectl -n kirana get pods
+NAME                          READY   STATUS    RESTARTS   AGE
+kirana-api-5b469b9656-d5gz6   1/1     Running   0          67s
+kirana-api-5b469b9656-wphkg   1/1     Running   0          46s
+kirana-postgres-0             1/1     Running   0          36s
+
+$ kubectl -n kirana delete pod kirana-postgres-0 --wait=false
+pod "kirana-postgres-0" deleted from kirana namespace
+
+TIME   API pods (READY / RESTARTS)                         postgres   /ready (from inside the cluster)
+t+4s   d5gz6 1/1/0  wphkg 1/1/0                           1/1 Terminating    503
+t+7s   d5gz6 1/1/0  wphkg 1/1/0                           0/1 Running        503
+t+11s  d5gz6 1/1/0  wphkg 1/1/0                           0/1 Running        200
+t+14s  d5gz6 1/1/0  wphkg 0/1/0                           1/1 Running        200
+t+17s  d5gz6 1/1/0  wphkg 1/1/0                           1/1 Running        200
+t+20s  d5gz6 1/1/0  wphkg 1/1/0                           1/1 Running        200
+t+23s  d5gz6 1/1/0  wphkg 1/1/0                           1/1 Running        200
+t+26s  d5gz6 1/1/0  wphkg 1/1/0                           1/1 Running        200
+t+29s  d5gz6 1/1/0  wphkg 1/1/0                           1/1 Running        200
+t+32s  d5gz6 1/1/0  wphkg 1/1/0                           1/1 Running        200
+t+35s  d5gz6 1/1/0  wphkg 1/1/0                           1/1 Running        200
+t+38s  d5gz6 1/1/0  wphkg 1/1/0                           1/1 Running        200
+t+41s  d5gz6 1/1/0  wphkg 1/1/0                           1/1 Running        200
+t+44s  d5gz6 1/1/0  wphkg 1/1/0                           1/1 Running        200
+t+47s  d5gz6 1/1/0  wphkg 1/1/0                           1/1 Running        200
+t+50s  d5gz6 1/1/0  wphkg 1/1/0                           1/1 Running        200
+t+54s  d5gz6 1/1/0  wphkg 1/1/0                           1/1 Running        200
+t+56s  d5gz6 1/1/0  wphkg 1/1/0                           1/1 Running        200
+
+$ kubectl -n kirana get pods
+NAME                          READY   STATUS    RESTARTS   AGE
+kirana-api-5b469b9656-d5gz6   1/1     Running   0          2m5s
+kirana-api-5b469b9656-wphkg   1/1     Running   0          104s
+kirana-postgres-0             1/1     Running   0          56s
+
+# RESTARTS unchanged: liveness (/health) never failed; readiness (/ready) took the API out of the Service while the DB was down.

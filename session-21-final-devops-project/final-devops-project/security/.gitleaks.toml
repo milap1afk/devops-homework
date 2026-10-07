@@ -1,0 +1,3 @@
+title = "kirana-final gitleaks config"
+[extend]
+useDefault = true

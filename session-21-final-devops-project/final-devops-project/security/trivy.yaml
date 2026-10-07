@@ -1,0 +1,5 @@
+# Shared Trivy settings: block only on HIGH/CRITICAL issues that have a fix / are actionable
+severity: [CRITICAL, HIGH]
+exit-code: 1
+vulnerability:
+  ignore-unfixed: true
