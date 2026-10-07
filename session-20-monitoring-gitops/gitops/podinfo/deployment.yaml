@@ -4,7 +4,7 @@ metadata:
   name: podinfo
   labels: { app: podinfo }
 spec:
-  replicas: 2
+  replicas: 3
   selector:
     matchLabels: { app: podinfo }
   template:
@@ -16,7 +16,7 @@ spec:
           image: ghcr.io/stefanprodan/podinfo:6.15.0
           command: ["./podinfo", "--port=9898", "--level=info"]
           env:
-            - { name: PODINFO_UI_MESSAGE, value: "Deployed by Argo CD from Git" }
+            - { name: PODINFO_UI_MESSAGE, value: "Updated through a Git commit" }
             - { name: PODINFO_UI_COLOR, value: "#2e7d32" }
           ports:
             - { name: http, containerPort: 9898 }
