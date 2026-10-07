@@ -1,0 +1,299 @@
+######## helm create ########
+$ helm create demo-chart && find demo-chart -type f | sort && rm -rf demo-chart
+Creating demo-chart
+demo-chart/.helmignore
+demo-chart/Chart.yaml
+demo-chart/templates/NOTES.txt
+demo-chart/templates/_helpers.tpl
+demo-chart/templates/deployment.yaml
+demo-chart/templates/hpa.yaml
+demo-chart/templates/httproute.yaml
+demo-chart/templates/ingress.yaml
+demo-chart/templates/service.yaml
+demo-chart/templates/serviceaccount.yaml
+demo-chart/templates/tests/test-connection.yaml
+demo-chart/values.yaml
+
+# Our chart (webapp/) was made with 'helm create webapp' and then customised:
+$ find webapp -type f | sort
+webapp/.helmignore
+webapp/Chart.yaml
+webapp/templates/NOTES.txt
+webapp/templates/_helpers.tpl
+webapp/templates/configmap.yaml
+webapp/templates/deployment.yaml
+webapp/templates/hpa.yaml
+webapp/templates/httproute.yaml
+webapp/templates/ingress.yaml
+webapp/templates/service.yaml
+webapp/templates/serviceaccount.yaml
+webapp/templates/tests/test-connection.yaml
+webapp/values.yaml
+
+$ helm lint webapp
+==> Linting webapp
+[INFO] Chart.yaml: icon is recommended
+
+1 chart(s) linted, 0 chart(s) failed
+
+$ helm template kirana webapp --set page.version=preview | grep -E "^kind:|image:|replicas:"
+kind: ServiceAccount
+kind: ConfigMap
+kind: Service
+kind: Deployment
+  replicas: 2
+          image: "nginx:1.27-alpine"
+kind: Pod
+      image: busybox
+
+######## helm install ########
+$ helm install kirana ./webapp -n s15 --wait --timeout 3m
+NAME: kirana
+LAST DEPLOYED: Wed Oct  7 12:42:53 2026
+NAMESPACE: s15
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+NOTES:
+1. Get the application URL by running these commands:
+  export POD_NAME=$(kubectl get pods --namespace s15 -l "app.kubernetes.io/name=webapp,app.kubernetes.io/instance=kirana" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace s15 $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace s15 port-forward $POD_NAME 8080:$CONTAINER_PORT
+
+######## helm list ########
+$ helm list -n s15
+NAME  	NAMESPACE	REVISION	UPDATED                            	STATUS  	CHART       	APP VERSION
+kirana	s15      	1       	2026-10-07 12:42:53.33039 +0530 IST	deployed	webapp-0.1.0	1.27-alpine
+
+$ helm list -A
+NAME  	NAMESPACE	REVISION	UPDATED                            	STATUS  	CHART       	APP VERSION
+kirana	s15      	1       	2026-10-07 12:42:53.33039 +0530 IST	deployed	webapp-0.1.0	1.27-alpine
+
+######## helm status ########
+$ helm status kirana -n s15
+NAME: kirana
+LAST DEPLOYED: Wed Oct  7 12:42:53 2026
+NAMESPACE: s15
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+RESOURCES:
+==> v1/Pod(related)
+NAME                             READY   STATUS    RESTARTS   AGE
+kirana-webapp-65b5f949c4-qffh9   1/1     Running   0          12s
+kirana-webapp-65b5f949c4-zbcxd   1/1     Running   0          12s
+
+==> v1/ServiceAccount
+NAME            AGE
+kirana-webapp   12s
+
+==> v1/ConfigMap
+NAME                 DATA   AGE
+kirana-webapp-page   1      12s
+
+==> v1/Service
+NAME            TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
+kirana-webapp   ClusterIP   10.109.140.253   <none>        80/TCP    12s
+
+==> v1/Deployment
+NAME            READY   UP-TO-DATE   AVAILABLE   AGE
+kirana-webapp   2/2     2            2           12s
+
+
+NOTES:
+1. Get the application URL by running these commands:
+  export POD_NAME=$(kubectl get pods --namespace s15 -l "app.kubernetes.io/name=webapp,app.kubernetes.io/instance=kirana" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace s15 $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace s15 port-forward $POD_NAME 8080:$CONTAINER_PORT
+
+# Helm 4 removed 'status --show-resources'; list the release's live objects from its manifest instead:
+$ helm get manifest kirana -n s15 | kubectl -n s15 get -f -
+NAME                           AGE
+serviceaccount/kirana-webapp   12s
+
+NAME                           DATA   AGE
+configmap/kirana-webapp-page   1      12s
+
+NAME                    TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
+service/kirana-webapp   ClusterIP   10.109.140.253   <none>        80/TCP    12s
+
+NAME                            READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/kirana-webapp   2/2     2            2           12s
+
+######## helm get ########
+$ helm get values kirana -n s15
+USER-SUPPLIED VALUES:
+null
+
+$ helm get values kirana -n s15 --all | sed -n '/^page:/,/^[a-z]/p'
+page:
+  color: '#2e7d32'
+  message: Namaste! Release v1 deployed with Helm.
+  title: Kirana Web
+  version: v1
+podAnnotations: {}
+
+$ helm get manifest kirana -n s15 | grep -E '^# Source|^kind:'
+# Source: webapp/templates/serviceaccount.yaml
+kind: ServiceAccount
+# Source: webapp/templates/configmap.yaml
+kind: ConfigMap
+# Source: webapp/templates/service.yaml
+kind: Service
+# Source: webapp/templates/deployment.yaml
+kind: Deployment
+
+$ helm get notes kirana -n s15
+NOTES:
+1. Get the application URL by running these commands:
+  export POD_NAME=$(kubectl get pods --namespace s15 -l "app.kubernetes.io/name=webapp,app.kubernetes.io/instance=kirana" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace s15 $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace s15 port-forward $POD_NAME 8080:$CONTAINER_PORT
+
+
+$ helm get metadata kirana -n s15
+NAME: kirana
+CHART: webapp
+VERSION: 0.1.0
+APP_VERSION: 1.27-alpine
+ANNOTATIONS: 
+LABELS: modifiedAt=1791357185,name=kirana,owner=helm,status=deployed,version=1
+DEPENDENCIES: 
+NAMESPACE: s15
+REVISION: 1
+STATUS: deployed
+DEPLOYED_AT: 2026-10-07T12:42:53+05:30
+APPLY_METHOD: server-side apply
+
+$ kubectl -n s15 get deploy,svc,cm,pods -l app.kubernetes.io/instance=kirana
+NAME                            READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/kirana-webapp   2/2     2            2           12s
+
+NAME                    TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
+service/kirana-webapp   ClusterIP   10.109.140.253   <none>        80/TCP    12s
+
+NAME                           DATA   AGE
+configmap/kirana-webapp-page   1      12s
+
+NAME                                 READY   STATUS    RESTARTS   AGE
+pod/kirana-webapp-65b5f949c4-qffh9   1/1     Running   0          12s
+pod/kirana-webapp-65b5f949c4-zbcxd   1/1     Running   0          12s
+
+$ kubectl -n s15 exec curl -- curl -s http://kirana-webapp | grep -E '<h1>|<p>'
+    <h1>Kirana Web</h1>
+    <p>Namaste! Release v1 deployed with Helm.</p>
+    <p>version: v1 | release: kirana | revision: 1 | chart: webapp-0.1.0</p>
+
+######## helm upgrade ########
+$ helm upgrade kirana ./webapp -n s15 --set replicaCount=3 --set page.version=v2 --set page.message='Upgraded with helm upgrade' --wait --timeout 3m
+Release "kirana" has been upgraded. Happy Helming!
+NAME: kirana
+LAST DEPLOYED: Wed Oct  7 12:43:05 2026
+NAMESPACE: s15
+STATUS: deployed
+REVISION: 2
+DESCRIPTION: Upgrade complete
+NOTES:
+1. Get the application URL by running these commands:
+  export POD_NAME=$(kubectl get pods --namespace s15 -l "app.kubernetes.io/name=webapp,app.kubernetes.io/instance=kirana" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace s15 $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace s15 port-forward $POD_NAME 8080:$CONTAINER_PORT
+
+$ kubectl -n s15 get deploy kirana-webapp
+NAME            READY   UP-TO-DATE   AVAILABLE   AGE
+kirana-webapp   3/3     3            3           25s
+
+$ page
+Kirana Web
+Upgraded with helm upgrade
+version: v2 | release: kirana | revision: 2 | chart: webapp-0.1.0
+
+######## helm history ########
+$ helm history kirana -n s15
+REVISION	UPDATED                 	STATUS    	CHART       	APP VERSION	DESCRIPTION     
+1       	Wed Oct  7 12:42:53 2026	superseded	webapp-0.1.0	1.27-alpine	Install complete
+2       	Wed Oct  7 12:43:05 2026	deployed  	webapp-0.1.0	1.27-alpine	Upgrade complete
+
+######## helm rollback ########
+$ helm rollback kirana 1 -n s15 --wait --timeout 3m
+Rollback was a success! Happy Helming!
+
+$ helm history kirana -n s15
+REVISION	UPDATED                 	STATUS    	CHART       	APP VERSION	DESCRIPTION     
+1       	Wed Oct  7 12:42:53 2026	superseded	webapp-0.1.0	1.27-alpine	Install complete
+2       	Wed Oct  7 12:43:05 2026	superseded	webapp-0.1.0	1.27-alpine	Upgrade complete
+3       	Wed Oct  7 12:43:18 2026	deployed  	webapp-0.1.0	1.27-alpine	Rollback to 1   
+
+$ kubectl -n s15 get deploy kirana-webapp && sleep 5
+NAME            READY   UP-TO-DATE   AVAILABLE   AGE
+kirana-webapp   2/2     2            2           28s
+
+$ page
+Kirana Web
+Namaste! Release v1 deployed with Helm.
+version: v1 | release: kirana | revision: 1 | chart: webapp-0.1.0
+
+######## helm repo ########
+$ helm repo add bitnami https://charts.bitnami.com/bitnami
+"bitnami" already exists with the same configuration, skipping
+
+$ helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+"ingress-nginx" already exists with the same configuration, skipping
+
+$ helm repo update
+Hang tight while we grab the latest from your chart repositories...
+...Successfully got an update from the "ingress-nginx" chart repository
+...Successfully got an update from the "bitnami" chart repository
+Update Complete. ⎈Happy Helming!⎈
+
+$ helm repo list
+NAME         	URL                                       
+bitnami      	https://charts.bitnami.com/bitnami        
+ingress-nginx	https://kubernetes.github.io/ingress-nginx
+
+######## helm search ########
+$ helm search repo nginx | head -6
+NAME                            	CHART VERSION	APP VERSION	DESCRIPTION                                       
+bitnami/nginx                   	25.2.1       	1.31.6     	NGINX Open Source is a web server that can be a...
+bitnami/nginx-ingress-controller	12.0.7       	1.13.1     	NGINX Ingress Controller is an Ingress controll...
+bitnami/nginx-intel             	2.1.15       	0.4.9      	DEPRECATED NGINX Open Source for Intel is a lig...
+ingress-nginx/ingress-nginx     	4.15.1       	1.15.1     	Ingress controller for Kubernetes using NGINX a...
+
+$ helm search repo ingress-nginx/ingress-nginx --versions | head -4
+NAME                       	CHART VERSION	APP VERSION	DESCRIPTION                                       
+ingress-nginx/ingress-nginx	4.15.1       	1.15.1     	Ingress controller for Kubernetes using NGINX a...
+ingress-nginx/ingress-nginx	4.15.0       	1.15.0     	Ingress controller for Kubernetes using NGINX a...
+ingress-nginx/ingress-nginx	4.14.5       	1.14.5     	Ingress controller for Kubernetes using NGINX a...
+
+$ helm search hub prometheus --max-col-width 50 | head -5
+URL                                               	CHART VERSION     	APP VERSION            	DESCRIPTION                                       
+https://artifacthub.io/packages/helm/prometheus...	29.35.0           	v3.15.0                	Prometheus is a monitoring system and time seri...
+https://artifacthub.io/packages/helm/quench-pro...	0.0.20            	3.15.0                 	Metrics collection, storage, and alerting syste...
+https://artifacthub.io/packages/helm/saurabh6-p...	0.2.0             	1.1                    	This is a Helm Chart for Prometheus Setup.        
+https://artifacthub.io/packages/helm/prometheus...	13.0.0            	2.22.1                 	Prometheus is a monitoring system and time seri...
+
+$ helm show chart bitnami/nginx | grep -E "^(name|version|appVersion|description)"
+appVersion: 1.31.6
+description: NGINX Open Source is a web server that can be also used as a reverse
+name: nginx
+version: 25.2.1
+
+$ helm show values bitnami/nginx | grep -E "^replicaCount|^  type:" | head -3
+replicaCount: 1
+  type: RollingUpdate
+  type: ""
+
+######## helm uninstall ########
+$ helm uninstall kirana -n s15 --wait
+release "kirana" uninstalled
+
+$ helm list -n s15
+NAME	NAMESPACE	REVISION	UPDATED	STATUS	CHART	APP VERSION
+
+$ kubectl -n s15 get all -l app.kubernetes.io/instance=kirana
+No resources found in s15 namespace.
+

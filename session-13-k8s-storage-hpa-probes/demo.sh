@@ -19,8 +19,10 @@ volumes() {
   run "kubectl -n s13 get pod emptydir-demo -o jsonpath='{.metadata.uid}'; echo"
   UID1=$(kubectl -n s13 get pod emptydir-demo -o jsonpath='{.metadata.uid}')
   run "minikube ssh -- sudo ls /var/lib/kubelet/pods/$UID1/volumes/kubernetes.io~empty-dir/shared"
-  run 'kubectl -n s13 delete pod emptydir-demo --now'
-  run "minikube ssh -- sudo ls /var/lib/kubelet/pods/$UID1 2>&1 || echo 'gone: emptyDir is deleted with the Pod'"
+  run 'kubectl -n s13 delete pod emptydir-demo --wait'
+  echo "# give the kubelet a moment to tear down the Pod's volumes"
+  for i in $(seq 20); do minikube ssh -- sudo test -d /var/lib/kubelet/pods/$UID1 >/dev/null 2>&1 || break; sleep 3; done
+  run "minikube ssh -- sudo ls /var/lib/kubelet/pods/$UID1/volumes/kubernetes.io~empty-dir/shared 2>&1 || echo 'gone: emptyDir is deleted with the Pod'"
 
   echo "################ hostPath ################"
   run "kubectl apply -f $E/02-hostpath.yaml && kubectl -n s13 wait --for=condition=Ready pod/hostpath-demo --timeout=120s"

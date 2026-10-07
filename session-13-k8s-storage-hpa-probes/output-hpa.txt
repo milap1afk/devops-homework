@@ -134,3 +134,40 @@ $ kubectl -n s13 delete -f 02-hpa/load-generator.yml
 deployment.apps "load-generator" deleted from s13 namespace
 
 t+0s   cpu: 113%/50% 1 8 8
+t+20s  cpu: 113%/50% 1 8 8
+t+40s  cpu: 112%/50% 1 8 8
+t+61s  cpu: 112%/50% 1 8 8
+t+81s  cpu: 112%/50% 1 8 8
+t+101s cpu: 36%/50% 1 8 8
+t+121s cpu: 36%/50% 1 8 8
+t+141s cpu: 36%/50% 1 8 8
+t+161s cpu: 2%/50% 1 8 6
+t+181s cpu: 2%/50% 1 8 6
+t+202s cpu: 2%/50% 1 8 6
+
+$ kubectl -n s13 get hpa
+NAME         REFERENCE               TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+php-apache   Deployment/php-apache   cpu: 2%/50%   1         8         6          10m
+
+$ kubectl -n s13 describe hpa php-apache | sed -n '/^Events:/,$p'
+Events:
+  Type     Reason                        Age                   From                       Message
+  ----     ------                        ----                  ----                       -------
+  Warning  FailedGetResourceMetric       10m (x4 over 10m)     horizontal-pod-autoscaler  failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API
+  Warning  FailedComputeMetricsReplicas  10m (x4 over 10m)     horizontal-pod-autoscaler  invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API
+  Warning  FailedGetResourceMetric       9m3s (x4 over 9m47s)  horizontal-pod-autoscaler  failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)
+  Warning  FailedComputeMetricsReplicas  9m3s (x4 over 9m47s)  horizontal-pod-autoscaler  invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)
+  Normal   SuccessfulRescale             7m49s                 horizontal-pod-autoscaler  New size: 4; reason: cpu resource utilization (percentage of request) above target
+  Normal   SuccessfulRescale             5m49s                 horizontal-pod-autoscaler  New size: 8; reason: cpu resource utilization (percentage of request) above target
+  Normal   SuccessfulRescale             66s                   horizontal-pod-autoscaler  New size: 6; reason: All metrics below target
+  Normal   SuccessfulRescale             7s                    horizontal-pod-autoscaler  New size: 1; reason: All metrics below target
+
+$ kubectl -n s13 get pods -l run=php-apache
+NAME                         READY   STATUS        RESTARTS   AGE
+php-apache-cb4547fb8-fd72g   1/1     Terminating   0          7m49s
+php-apache-cb4547fb8-hwjvn   1/1     Terminating   0          7m49s
+php-apache-cb4547fb8-psdzj   1/1     Running       0          10m
+php-apache-cb4547fb8-swvx5   1/1     Terminating   0          5m49s
+php-apache-cb4547fb8-tzwdp   1/1     Terminating   0          5m49s
+php-apache-cb4547fb8-vzgrl   1/1     Terminating   0          7m49s
+

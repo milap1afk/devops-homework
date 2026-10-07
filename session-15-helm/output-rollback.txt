@@ -1,0 +1,132 @@
+################ 1. INSTALL (revision 1) ################
+$ helm install kirana ./webapp -n s15 --wait --timeout 3m
+NAME: kirana
+LAST DEPLOYED: Wed Oct  7 12:45:34 2026
+NAMESPACE: s15
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+NOTES:
+1. Get the application URL by running these commands:
+  export POD_NAME=$(kubectl get pods --namespace s15 -l "app.kubernetes.io/name=webapp,app.kubernetes.io/instance=kirana" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace s15 $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace s15 port-forward $POD_NAME 8080:$CONTAINER_PORT
+
+################ 2. VERIFY ################
+$ helm history kirana -n s15
+REVISION	UPDATED                 	STATUS  	CHART       	APP VERSION	DESCRIPTION     
+1       	Wed Oct  7 12:45:34 2026	deployed	webapp-0.1.0	1.27-alpine	Install complete
+
+$ kubectl -n s15 get deploy kirana-webapp -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,IMAGE:.spec.template.spec.containers[0].image
+NAME            READY   IMAGE
+kirana-webapp   2       nginx:1.27-alpine
+
+$ page
+command terminated with exit code 7
+
+################ 3. UPGRADE (revision 2): new message/colour, 3 replicas ################
+$ helm upgrade kirana ./webapp -n s15 --reuse-values --set replicaCount=3 --set page.version=v2 --set page.color='#1565c0' --set page.message='Release v2: new blue theme' --wait --timeout 3m
+Release "kirana" has been upgraded. Happy Helming!
+NAME: kirana
+LAST DEPLOYED: Wed Oct  7 12:45:35 2026
+NAMESPACE: s15
+STATUS: deployed
+REVISION: 2
+DESCRIPTION: Upgrade complete
+NOTES:
+1. Get the application URL by running these commands:
+  export POD_NAME=$(kubectl get pods --namespace s15 -l "app.kubernetes.io/name=webapp,app.kubernetes.io/instance=kirana" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace s15 $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace s15 port-forward $POD_NAME 8080:$CONTAINER_PORT
+
+################ 4. VERIFY ################
+$ helm history kirana -n s15
+REVISION	UPDATED                 	STATUS    	CHART       	APP VERSION	DESCRIPTION     
+1       	Wed Oct  7 12:45:34 2026	superseded	webapp-0.1.0	1.27-alpine	Install complete
+2       	Wed Oct  7 12:45:35 2026	deployed  	webapp-0.1.0	1.27-alpine	Upgrade complete
+
+$ kubectl -n s15 get deploy kirana-webapp -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,IMAGE:.spec.template.spec.containers[0].image
+NAME            READY   IMAGE
+kirana-webapp   3       nginx:1.27-alpine
+
+$ page
+Kirana Web
+Release v2: new blue theme
+version: v2 | release: kirana | revision: 2 | chart: webapp-0.1.0
+
+################ 5. UPGRADE AGAIN (revision 3): a BAD release (image tag does not exist) ################
+$ helm upgrade kirana ./webapp -n s15 --reuse-values --set image.tag=9.99-does-not-exist --set page.version=v3 --wait --timeout 60s
+level=WARN msg="upgrade failed" name=kirana error="resource Deployment/s15/kirana-webapp not ready. status: InProgress, message: Updated: 1/3\ncontext deadline exceeded"
+Error: UPGRADE FAILED: resource Deployment/s15/kirana-webapp not ready. status: InProgress, message: Updated: 1/3
+context deadline exceeded
+
+################ 6. VERIFY: release FAILED, new Pods cannot pull the image ################
+$ helm history kirana -n s15
+REVISION	UPDATED                 	STATUS    	CHART       	APP VERSION	DESCRIPTION                                                                                                        
+1       	Wed Oct  7 12:45:34 2026	superseded	webapp-0.1.0	1.27-alpine	Install complete                                                                                                   
+2       	Wed Oct  7 12:45:35 2026	deployed  	webapp-0.1.0	1.27-alpine	Upgrade complete                                                                                                   
+3       	Wed Oct  7 12:45:43 2026	failed    	webapp-0.1.0	1.27-alpine	Upgrade "kirana" failed: resource Deployment/s15/kirana-webapp not ready. status: InProgress, message: Updated: ...
+
+$ helm status kirana -n s15 | grep -E 'STATUS|REVISION|DESCRIPTION'
+STATUS: failed
+REVISION: 3
+DESCRIPTION: Upgrade "kirana" failed: resource Deployment/s15/kirana-webapp not ready. status: InProgress, message: Updated: 1/3
+NAME                             READY   STATUS         RESTARTS   AGE
+
+$ kubectl -n s15 get pods -l app.kubernetes.io/instance=kirana
+NAME                             READY   STATUS         RESTARTS   AGE
+kirana-webapp-67bcdffbcb-2w2zh   1/1     Running        0          65s
+kirana-webapp-67bcdffbcb-7p4vk   1/1     Running        0          66s
+kirana-webapp-67bcdffbcb-tqznl   1/1     Running        0          67s
+kirana-webapp-7494469f64-dswzg   0/1     ErrImagePull   0          60s
+
+# old v2 Pods keep serving during the failed rollout (RollingUpdate keeps availability):
+$ page
+Kirana Web
+Release v2: new blue theme
+version: v2 | release: kirana | revision: 2 | chart: webapp-0.1.0
+
+################ 7. ROLLBACK to revision 2 ################
+$ helm rollback kirana 2 -n s15 --wait --timeout 3m
+Rollback was a success! Happy Helming!
+
+################ 8. VERIFY ################
+$ helm history kirana -n s15
+REVISION	UPDATED                 	STATUS    	CHART       	APP VERSION	DESCRIPTION                                                                                                        
+1       	Wed Oct  7 12:45:34 2026	superseded	webapp-0.1.0	1.27-alpine	Install complete                                                                                                   
+2       	Wed Oct  7 12:45:35 2026	superseded	webapp-0.1.0	1.27-alpine	Upgrade complete                                                                                                   
+3       	Wed Oct  7 12:45:43 2026	failed    	webapp-0.1.0	1.27-alpine	Upgrade "kirana" failed: resource Deployment/s15/kirana-webapp not ready. status: InProgress, message: Updated: ...
+4       	Wed Oct  7 12:46:44 2026	deployed  	webapp-0.1.0	1.27-alpine	Rollback to 2                                                                                                      
+
+$ kubectl -n s15 get pods -l app.kubernetes.io/instance=kirana
+NAME                             READY   STATUS    RESTARTS   AGE
+kirana-webapp-67bcdffbcb-2w2zh   1/1     Running   0          68s
+kirana-webapp-67bcdffbcb-7p4vk   1/1     Running   0          69s
+kirana-webapp-67bcdffbcb-tqznl   1/1     Running   0          70s
+
+$ kubectl -n s15 get deploy kirana-webapp -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,IMAGE:.spec.template.spec.containers[0].image
+NAME            READY   IMAGE
+kirana-webapp   3       nginx:1.27-alpine
+
+$ helm get values kirana -n s15
+USER-SUPPLIED VALUES:
+page:
+  color: '#1565c0'
+  message: 'Release v2: new blue theme'
+  version: v2
+replicaCount: 3
+
+$ kubectl -n s15 get configmap kirana-webapp-page -o jsonpath='{.data.index\.html}' | grep version
+    <p>version: v2 | release: kirana | revision: 2 | chart: webapp-0.1.0</p>
+
+# The ConfigMap is back to revision 2. The running Pods were NOT restarted (their template already equals
+# revision 2), so their mounted index.html follows the ConfigMap only after the kubelet re-syncs the volume
+# (can lag up to ~60s; an earlier run still served the v3 page right after the rollback). Waiting for the sync:
+$ page
+Kirana Web
+Release v2: new blue theme
+version: v2 | release: kirana | revision: 2 | chart: webapp-0.1.0
+
+# Note: rollback created a NEW revision (4) that is a copy of revision 2; history is never rewritten.
