@@ -1,0 +1,20 @@
+# Rendered from ../helm/kirana (helm template kirana helm/kirana -f values-minikube.yaml). Edit the chart, not this file.
+# PostgreSQL: StatefulSet with its own PersistentVolumeClaim (data survives Pod restarts)
+apiVersion: v1
+kind: Service
+metadata:
+  name: kirana-postgres
+  labels:
+    app.kubernetes.io/name: kirana
+    app.kubernetes.io/instance: kirana
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: kirana-1.0.0
+    app.kubernetes.io/component: postgres
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/instance: kirana
+    app.kubernetes.io/component: postgres
+  ports:
+    - { name: postgres, port: 5432 }

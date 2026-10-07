@@ -1,0 +1,15 @@
+# Values used by Argo CD (gitops/argocd-application.yaml) on the local minikube cluster
+image:
+  repository: ghcr.io/milap1afk/kirana-final
+  tag: "1.0.0"
+  pullPolicy: Never          # image is built locally and loaded with `minikube image load`
+
+secrets:
+  existingSecret: kirana-secrets   # created out-of-band (see README) - no secret values in Git
+
+ingress:
+  host: kirana.local
+
+config:
+  SHOP_NAME: "Sharma Kirana Store"
+  APP_ENV: "minikube"

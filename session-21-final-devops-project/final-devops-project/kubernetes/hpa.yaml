@@ -1,0 +1,23 @@
+# Rendered from ../helm/kirana (helm template kirana helm/kirana -f values-minikube.yaml). Edit the chart, not this file.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: kirana-api
+  labels:
+    app.kubernetes.io/name: kirana
+    app.kubernetes.io/instance: kirana
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: kirana-1.0.0
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: kirana-api
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 60 }

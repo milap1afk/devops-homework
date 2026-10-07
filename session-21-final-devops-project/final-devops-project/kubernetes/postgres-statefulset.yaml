@@ -1,0 +1,60 @@
+# Rendered from ../helm/kirana (helm template kirana helm/kirana -f values-minikube.yaml). Edit the chart, not this file.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kirana-postgres
+  labels:
+    app.kubernetes.io/name: kirana
+    app.kubernetes.io/instance: kirana
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: kirana-1.0.0
+    app.kubernetes.io/component: postgres
+spec:
+  serviceName: kirana-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: kirana
+      app.kubernetes.io/component: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kirana
+        app.kubernetes.io/instance: kirana
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/managed-by: Helm
+        helm.sh/chart: kirana-1.0.0
+        app.kubernetes.io/component: postgres
+    spec:
+      securityContext:
+        fsGroup: 70          # "postgres" group in the alpine image
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          ports: [{ name: postgres, containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_DB, value: "ledger" }
+            - { name: POSTGRES_USER, value: "kirana" }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: kirana-secrets, key: POSTGRES_PASSWORD } }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          readinessProbe:
+            exec: { command: ["sh", "-c", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"] }
+            periodSeconds: 5
+          livenessProbe:
+            exec: { command: ["sh", "-c", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"] }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: { storage: 1Gi }

@@ -1,0 +1,18 @@
+# Rendered from ../helm/kirana (helm template kirana helm/kirana -f values-minikube.yaml). Edit the chart, not this file.
+apiVersion: v1
+kind: Service
+metadata:
+  name: kirana-api
+  labels:
+    app.kubernetes.io/name: kirana
+    app.kubernetes.io/instance: kirana
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: kirana-1.0.0
+    app.kubernetes.io/component: api
+spec:
+  selector:
+    app.kubernetes.io/instance: kirana
+    app.kubernetes.io/component: api
+  ports:
+    - { name: http, port: 80, targetPort: http }

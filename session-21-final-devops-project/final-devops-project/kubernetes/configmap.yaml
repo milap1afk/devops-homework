@@ -1,0 +1,18 @@
+# Rendered from ../helm/kirana (helm template kirana helm/kirana -f values-minikube.yaml). Edit the chart, not this file.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kirana-config
+  labels:
+    app.kubernetes.io/name: kirana
+    app.kubernetes.io/instance: kirana
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: kirana-1.0.0
+data:
+  APP_ENV: "minikube"
+  SHOP_NAME: "Sharma Kirana Store"
+  POSTGRES_HOST: kirana-postgres
+  POSTGRES_DB: "ledger"
+  POSTGRES_USER: "kirana"

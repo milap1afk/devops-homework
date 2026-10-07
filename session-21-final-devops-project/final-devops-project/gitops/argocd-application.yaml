@@ -1,0 +1,25 @@
+# GitOps: Argo CD keeps namespace "kirana" in sync with the Helm chart in this repo
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kirana-final
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/milap1afk/devops-homework.git
+    targetRevision: main
+    path: session-21-final-devops-project/final-devops-project/helm/kirana
+    helm:
+      releaseName: kirana
+      valueFiles:
+        - values-minikube.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kirana
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

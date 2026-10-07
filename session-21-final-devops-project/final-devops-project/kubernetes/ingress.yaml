@@ -1,0 +1,23 @@
+# Rendered from ../helm/kirana (helm template kirana helm/kirana -f values-minikube.yaml). Edit the chart, not this file.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kirana
+  labels:
+    app.kubernetes.io/name: kirana
+    app.kubernetes.io/instance: kirana
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: kirana-1.0.0
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: kirana.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kirana-api
+                port: { name: http }

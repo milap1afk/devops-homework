@@ -1,0 +1,32 @@
+# Rendered from ../helm/kirana (helm template kirana helm/kirana -f values-minikube.yaml). Edit the chart, not this file.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kirana-alerts
+  labels:
+    app.kubernetes.io/name: kirana
+    app.kubernetes.io/instance: kirana
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: kirana-1.0.0
+spec:
+  groups:
+    - name: kirana.rules
+      rules:
+        - alert: KiranaApiDown
+          expr: sum(up{service="kirana-api"}) == 0 or absent(up{service="kirana-api"})
+          for: 1m
+          labels: { severity: critical }
+          annotations: { summary: "Kirana API has no healthy scrape targets" }
+        - alert: KiranaHighErrorRate
+          expr: |
+            sum(rate(kirana_http_requests_total{status=~"5.."}[5m]))
+              / clamp_min(sum(rate(kirana_http_requests_total[5m])), 1e-9) > 0.05
+          for: 2m
+          labels: { severity: warning }
+          annotations: { summary: "More than 5% of Kirana API requests are failing" }
+        - alert: KiranaSlowRequests
+          expr: histogram_quantile(0.95, sum(rate(kirana_http_request_duration_seconds_bucket[5m])) by (le)) > 0.5
+          for: 5m
+          labels: { severity: warning }
+          annotations: { summary: "Kirana API p95 latency above 500ms" }

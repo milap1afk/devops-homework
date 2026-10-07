@@ -1,0 +1,56 @@
+# ---------------------------------------------------------------- application
+image:
+  repository: ghcr.io/milap1afk/kirana-final
+  tag: ""                 # defaults to .Chart.AppVersion; CI sets it to the git SHA
+  pullPolicy: IfNotPresent
+
+replicaCount: 2           # ignored when autoscaling.enabled
+
+config:                   # -> ConfigMap -> env vars
+  SHOP_NAME: "Kirana Store"
+  APP_ENV: "production"
+
+secrets:
+  # Use an existing Secret (GitOps: created out-of-band / by Sealed Secrets / External Secrets).
+  # It must contain keys API_KEY and POSTGRES_PASSWORD.
+  existingSecret: ""
+  # ...or let the chart create one. Values are REQUIRED at install time (--set), never stored in Git.
+  apiKey: ""
+  postgresPassword: ""
+
+resources:
+  requests: { cpu: 50m, memory: 96Mi }
+  limits:   { cpu: 500m, memory: 192Mi }
+
+probes:
+  liveness:  { path: /health, initialDelaySeconds: 5, periodSeconds: 10 }
+  readiness: { path: /ready,  initialDelaySeconds: 3, periodSeconds: 5 }
+  startup:   { path: /health, failureThreshold: 30, periodSeconds: 2 }
+
+service:
+  port: 80
+
+ingress:
+  enabled: true
+  className: nginx
+  host: kirana.local
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 60
+
+# ---------------------------------------------------------------- database
+postgres:
+  image: postgres:17-alpine
+  database: ledger
+  user: kirana
+  storage: 1Gi
+  storageClassName: ""    # "" = cluster default StorageClass
+
+# ---------------------------------------------------------------- monitoring
+monitoring:
+  serviceMonitor: true    # needs the Prometheus Operator CRDs (kube-prometheus-stack)
+  prometheusRule: true
+  grafanaDashboard: true  # ConfigMap picked up by the Grafana sidecar

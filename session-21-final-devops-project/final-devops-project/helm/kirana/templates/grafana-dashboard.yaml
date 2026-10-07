@@ -1,0 +1,11 @@
+{{- if .Values.monitoring.grafanaDashboard }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kirana.name" . }}-dashboard
+  labels: {{- include "kirana.labels" . | nindent 4 }}
+    grafana_dashboard: "1"      # kube-prometheus-stack's Grafana sidecar loads ConfigMaps with this label
+data:
+  kirana.json: |-
+{{ .Files.Get "dashboards/kirana.json" | indent 4 }}
+{{- end }}

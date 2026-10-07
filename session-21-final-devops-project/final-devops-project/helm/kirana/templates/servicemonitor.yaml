@@ -1,0 +1,12 @@
+{{- if .Values.monitoring.serviceMonitor }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "kirana.name" . }}-api
+  labels: {{- include "kirana.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels: {{- include "kirana.apiSelector" . | nindent 6 }}
+  endpoints:
+    - { port: http, path: /metrics, interval: 15s }
+{{- end }}
