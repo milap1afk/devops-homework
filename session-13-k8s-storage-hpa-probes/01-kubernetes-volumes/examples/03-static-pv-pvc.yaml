@@ -1,0 +1,32 @@
+# Static provisioning: an admin creates the PV by hand, a PVC claims it.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: manual-pv
+spec:
+  capacity: { storage: 1Gi }
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual            # only PVCs asking for "manual" can bind
+  hostPath: { path: /tmp/s13-manual-pv }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: manual-pvc, namespace: s13 }
+spec:
+  storageClassName: manual
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 500Mi } }
+---
+apiVersion: v1
+kind: Pod
+metadata: { name: static-pv-demo, namespace: s13 }
+spec:
+  containers:
+    - name: app
+      image: busybox:1.36
+      command: ["sh", "-c", "sleep 3600"]
+      volumeMounts: [{ name: data, mountPath: /data }]
+  volumes:
+    - name: data
+      persistentVolumeClaim: { claimName: manual-pvc }

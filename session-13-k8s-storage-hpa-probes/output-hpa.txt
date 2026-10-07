@@ -1,0 +1,78 @@
+######## 1. Deploy the application ########
+$ kubectl apply -f 02-hpa/hpa.yml
+deployment.apps/php-apache created
+service/php-apache created
+horizontalpodautoscaler.autoscaling/php-apache created
+
+$ kubectl -n s13 rollout status deploy/php-apache --timeout=180s
+Waiting for deployment "php-apache" rollout to finish: 0 of 1 updated replicas are available...
+deployment "php-apache" successfully rolled out
+
+$ kubectl -n s13 get deploy,svc php-apache
+NAME                         READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/php-apache   1/1     1            1           11s
+
+NAME                 TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
+service/php-apache   ClusterIP   10.103.250.251   <none>        80/TCP    11s
+
+######## 2-3. Configure + verify HPA ########
+# (equivalent imperative command: kubectl autoscale deployment php-apache --cpu-percent=50 --min=1 --max=8)
+# waiting for metrics-server to report the first CPU sample...
+$ kubectl -n s13 get hpa
+NAME         REFERENCE               TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+php-apache   Deployment/php-apache   cpu: 3%/50%   1         8         1          119s
+
+$ kubectl -n s13 describe hpa php-apache | grep -vE '^(Annotations|CreationTimestamp|Labels):'
+Name:                                                  php-apache
+Namespace:                                             s13
+Reference:                                             Deployment/php-apache
+Metrics:                                               ( current / target )
+  resource cpu on pods  (as a percentage of request):  3% (6m) / 50%
+Min replicas:                                          1
+Max replicas:                                          8
+Behavior:
+  Scale Up:
+    Stabilization Window: 0 seconds
+    Select Policy: Max
+    Policies:
+      - Type: Pods     Value: 4    Period: 15 seconds
+      - Type: Percent  Value: 100  Period: 15 seconds
+  Scale Down:
+    Stabilization Window: 60 seconds
+    Select Policy: Max
+    Policies:
+      - Type: Percent  Value: 100  Period: 15 seconds
+Deployment pods:       1 current / 1 desired
+Conditions:
+  Type            Status  Reason              Message
+  ----            ------  ------              -------
+  AbleToScale     True    ReadyForNewScale    recommended size matches current size
+  ScalingActive   True    ValidMetricFound    the HPA was able to successfully calculate a replica count from cpu resource utilization (percentage of request)
+  ScalingLimited  False   DesiredWithinRange  the desired count is within the acceptable range
+Events:
+  Type     Reason                        Age                 From                       Message
+  ----     ------                        ----                ----                       -------
+  Warning  FailedGetResourceMetric       74s (x4 over 119s)  horizontal-pod-autoscaler  failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API
+  Warning  FailedComputeMetricsReplicas  74s (x4 over 119s)  horizontal-pod-autoscaler  invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API
+  Warning  FailedGetResourceMetric       15s (x4 over 59s)   horizontal-pod-autoscaler  failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)
+  Warning  FailedComputeMetricsReplicas  15s (x4 over 59s)   horizontal-pod-autoscaler  invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)
+
+$ kubectl -n s13 top pods
+NAME                         CPU(cores)   MEMORY(bytes)   
+hostpath-demo                0m           0Mi             
+notes-app-7bb7949649-qr5lg   0m           0Mi             
+php-apache-cb4547fb8-psdzj   6m           11Mi            
+
+######## 4-5. Deploy load generator / increase load ########
+$ kubectl apply -f 02-hpa/load-generator.yml
+deployment.apps/load-generator created
+
+######## 6-7. Observe CPU utilisation and Pod scaling (sampled every 20s) ########
+TIME   HPA(cpu: current/target)   REPLICAS   POD CPU (kubectl top)
+t+0s   cpu: 3%/50% 1 8 1   |  6m 
+t+21s  cpu: 3%/50% 1 8 1   |  6m 
+t+41s  cpu: 3%/50% 1 8 1   |  6m 
+t+61s  cpu: 169%/50% 1 8 1   |  339m 
+t+81s  cpu: 169%/50% 1 8 4   |  339m 
+t+102s cpu: 169%/50% 1 8 4   |  339m 
+t+122s cpu: 208%/50% 1 8 4   |  245m 254m 417m 278m 

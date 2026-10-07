@@ -1,0 +1,122 @@
+################ emptyDir ################
+$ kubectl apply -f 01-kubernetes-volumes/examples/01-emptydir.yaml && kubectl -n s13 wait --for=condition=Ready pod/emptydir-demo --timeout=120s
+pod/emptydir-demo created
+pod/emptydir-demo condition met
+
+$ kubectl -n s13 exec emptydir-demo -c reader -- cat /input/log.txt
+Wed Oct  7 06:55:17 UTC 2026
+Wed Oct  7 06:55:19 UTC 2026
+Wed Oct  7 06:55:21 UTC 2026
+Wed Oct  7 06:55:23 UTC 2026
+
+$ kubectl -n s13 exec emptydir-demo -c reader -- sh -c "echo hack >> /input/log.txt"   # reader mounted it readOnly
+sh: can't create /input/log.txt: Read-only file system
+command terminated with exit code 1
+
+$ kubectl -n s13 get pod emptydir-demo -o jsonpath='{.metadata.uid}'; echo
+860041e0-f456-4c5f-8f9e-0a8ead53f769
+
+$ minikube ssh -- sudo ls /var/lib/kubelet/pods/860041e0-f456-4c5f-8f9e-0a8ead53f769/volumes/kubernetes.io~empty-dir/shared
+log.txt
+
+$ kubectl -n s13 delete pod emptydir-demo --now
+pod "emptydir-demo" deleted from s13 namespace
+
+$ minikube ssh -- sudo ls /var/lib/kubelet/pods/860041e0-f456-4c5f-8f9e-0a8ead53f769 2>&1 || echo 'gone: emptyDir is deleted with the Pod'
+containers  etc-hosts  plugins	volumes
+
+################ hostPath ################
+$ kubectl apply -f 01-kubernetes-volumes/examples/02-hostpath.yaml && kubectl -n s13 wait --for=condition=Ready pod/hostpath-demo --timeout=120s
+pod/hostpath-demo created
+pod/hostpath-demo condition met
+
+$ minikube ssh -- cat /tmp/s13-hostpath/hostpath.txt
+written by hostpath-demo at Wed Oct  7 06:55:27 UTC 2026
+
+$ kubectl -n s13 delete pod hostpath-demo --now
+pod "hostpath-demo" deleted from s13 namespace
+
+$ kubectl apply -f 01-kubernetes-volumes/examples/02-hostpath.yaml && kubectl -n s13 wait --for=condition=Ready pod/hostpath-demo --timeout=120s
+pod/hostpath-demo created
+pod/hostpath-demo condition met
+
+# the file is still on the node and now has 2 lines (survived the Pod)
+$ minikube ssh -- cat /tmp/s13-hostpath/hostpath.txt
+written by hostpath-demo at Wed Oct  7 06:55:27 UTC 2026
+written by hostpath-demo at Wed Oct  7 06:55:31 UTC 2026
+
+################ Static PersistentVolume + PersistentVolumeClaim ################
+$ kubectl apply -f 01-kubernetes-volumes/examples/03-static-pv-pvc.yaml
+persistentvolume/manual-pv created
+persistentvolumeclaim/manual-pvc created
+pod/static-pv-demo created
+
+$ kubectl get pv manual-pv
+NAME        CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM            STORAGECLASS   VOLUMEATTRIBUTESCLASS   REASON   AGE
+manual-pv   1Gi        RWO            Retain           Bound    s13/manual-pvc   manual         <unset>                          9s
+
+$ kubectl -n s13 get pvc manual-pvc
+NAME         STATUS   VOLUME      CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+manual-pvc   Bound    manual-pv   1Gi        RWO            manual         <unset>                 9s
+
+$ kubectl -n s13 exec static-pv-demo -- sh -c "echo order-1001 > /data/orders.txt; cat /data/orders.txt"
+order-1001
+
+$ kubectl -n s13 delete pod static-pv-demo --now && kubectl -n s13 delete pvc manual-pvc
+pod "static-pv-demo" deleted from s13 namespace
+persistentvolumeclaim "manual-pvc" deleted from s13 namespace
+
+# reclaimPolicy Retain -> PV becomes Released, data kept on disk
+$ kubectl get pv manual-pv
+NAME        CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS     CLAIM            STORAGECLASS   VOLUMEATTRIBUTESCLASS   REASON   AGE
+manual-pv   1Gi        RWO            Retain           Released   s13/manual-pvc   manual         <unset>                          13s
+
+$ minikube ssh -- cat /tmp/s13-manual-pv/orders.txt
+order-1001
+
+################ StorageClass ################
+$ kubectl get storageclass
+NAME                 PROVISIONER                RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION   AGE
+standard (default)   k8s.io/minikube-hostpath   Delete          Immediate           false                  58m
+
+$ kubectl apply -f 01-kubernetes-volumes/examples/04-storageclass.yaml && kubectl get storageclass fast-retain
+storageclass.storage.k8s.io/fast-retain created
+NAME          PROVISIONER                RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION   AGE
+fast-retain   k8s.io/minikube-hostpath   Retain          Immediate           true                   0s
+
+################ Dynamic provisioning ################
+$ kubectl get pv | grep -c dynamic || true   # no PV exists for it yet
+0
+
+$ kubectl apply -f 01-kubernetes-volumes/examples/05-dynamic-pvc.yaml
+persistentvolumeclaim/dynamic-pvc created
+deployment.apps/notes-app created
+
+$ kubectl -n s13 get pvc dynamic-pvc
+NAME          STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+dynamic-pvc   Bound    pvc-99dc9720-ef37-4ca8-8bc4-a93ce48acc2f   200Mi      RWO            standard       <unset>                 1s
+
+$ kubectl get pv -o custom-columns=NAME:.metadata.name,CAPACITY:.spec.capacity.storage,RECLAIM:.spec.persistentVolumeReclaimPolicy,STATUS:.status.phase,CLAIM:.spec.claimRef.name,STORAGECLASS:.spec.storageClassName | grep -E 'NAME|dynamic-pvc'
+NAME                                       CAPACITY   RECLAIM   STATUS     CLAIM         STORAGECLASS
+pvc-99dc9720-ef37-4ca8-8bc4-a93ce48acc2f   200Mi      Delete    Bound      dynamic-pvc   standard
+
+$ kubectl -n s13 describe pvc dynamic-pvc | sed -n '/^Events:/,$p'
+Events:
+  Type    Reason                 Age              From                                                                    Message
+  ----    ------                 ----             ----                                                                    -------
+  Normal  ExternalProvisioning   1s (x2 over 1s)  persistentvolume-controller                                             Waiting for a volume to be created either by the external provisioner 'k8s.io/minikube-hostpath' or manually by the system administrator. If volume creation is delayed, please verify that the provisioner is running and correctly registered.
+  Normal  Provisioning           1s               k8s.io/minikube-hostpath_minikube_a7c233ae-ef71-42ae-991b-e14ad90ae424  External provisioner is provisioning volume for claim "s13/dynamic-pvc"
+  Normal  ProvisioningSucceeded  1s               k8s.io/minikube-hostpath_minikube_a7c233ae-ef71-42ae-991b-e14ad90ae424  Successfully provisioned volume pvc-99dc9720-ef37-4ca8-8bc4-a93ce48acc2f
+
+$ kubectl -n s13 exec deploy/notes-app -- cat /data/notes.txt
+pod notes-app-7bb7949649-lfscn started at Wed Oct  7 06:55:46 UTC 2026
+
+# Delete the Pod -> Deployment creates a new one -> same PVC -> data survives
+$ kubectl -n s13 delete pod -l app=notes --now && kubectl -n s13 rollout status deploy/notes-app --timeout=120s
+pod "notes-app-7bb7949649-lfscn" deleted from s13 namespace
+deployment "notes-app" successfully rolled out
+
+$ kubectl -n s13 exec deploy/notes-app -- cat /data/notes.txt
+pod notes-app-7bb7949649-lfscn started at Wed Oct  7 06:55:46 UTC 2026
+pod notes-app-7bb7949649-qr5lg started at Wed Oct  7 06:55:47 UTC 2026
+

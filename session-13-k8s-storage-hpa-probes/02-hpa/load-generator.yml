@@ -1,0 +1,18 @@
+# Load generator: 4 busybox Pods hammering the Service in a loop
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-generator
+  namespace: s13
+spec:
+  replicas: 4
+  selector:
+    matchLabels: { app: load-generator }
+  template:
+    metadata:
+      labels: { app: load-generator }
+    spec:
+      containers:
+        - name: busybox
+          image: busybox:1.36
+          command: ["sh", "-c", "while sleep 0.01; do wget -q -O- http://php-apache; done"]

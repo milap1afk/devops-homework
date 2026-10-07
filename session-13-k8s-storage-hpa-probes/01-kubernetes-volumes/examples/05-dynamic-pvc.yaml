@@ -1,0 +1,27 @@
+# Dynamic provisioning: NO PV is written by hand. The PVC names a StorageClass and
+# the provisioner creates a matching PV automatically.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: dynamic-pvc, namespace: s13 }
+spec:
+  storageClassName: standard           # minikube's default StorageClass
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 200Mi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: notes-app, namespace: s13 }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: notes } }
+  template:
+    metadata: { labels: { app: notes } }
+    spec:
+      containers:
+        - name: app
+          image: busybox:1.36
+          command: ["sh", "-c", "echo \"pod $(hostname) started at $(date)\" >> /data/notes.txt; sleep 3600"]
+          volumeMounts: [{ name: data, mountPath: /data }]
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: dynamic-pvc }
