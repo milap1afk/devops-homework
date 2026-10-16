@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -48,3 +48,21 @@ class Balance(BaseModel):
     customer: str
     balance: float
     reminder: str
+
+
+class DayTotals(BaseModel):
+    date: date
+    udhar: float = 0
+    payment: float = 0
+    sale: float = 0
+    count: int = 0
+
+
+class Stats(BaseModel):
+    outstanding: float          # credit still owed to the shop
+    customers_with_dues: int
+    customers_total: int
+    entries_total: int
+    collection_rate: float      # % of all credit given that has been paid back
+    today: DayTotals
+    days: list[DayTotals]       # oldest first, one per day (IST)

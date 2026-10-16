@@ -86,3 +86,50 @@ def test_metrics_endpoint(client):
     text = client.get("/metrics").text
     assert "http_requests_total" in text
     assert 'kirana_ledger_entries_total{type="udhar"}' in text
+
+
+def test_filter_entries_by_type_and_search(client):
+    add(client, "Ramesh", 500, "udhar")
+    client.post("/api/entries", json={"customer": "Asha", "amount": 120, "type": "sale", "note": "doodh, bread"})
+    add(client, "Sunita", 200, "payment")
+    assert [e["customer"] for e in client.get("/api/entries?type=sale").json()] == ["Asha"]
+    assert [e["customer"] for e in client.get("/api/entries?q=doodh").json()] == ["Asha"]
+    assert [e["customer"] for e in client.get("/api/entries?q=sun").json()] == ["Sunita"]
+    assert len(client.get("/api/entries?limit=2").json()) == 2
+    assert client.get("/api/entries?type=loan").status_code == 422
+
+
+def test_stats_today_outstanding_and_trend(client):
+    add(client, "Ramesh", 500, "udhar")
+    add(client, "Ramesh", 200, "payment")
+    add(client, "Sunita", 300, "udhar")
+    add(client, "Asha", 120, "sale")
+    s = client.get("/api/stats").json()
+    assert s["outstanding"] == 600            # Ramesh 300 + Sunita 300
+    assert s["customers_with_dues"] == 2 and s["customers_total"] == 3 and s["entries_total"] == 4
+    assert s["collection_rate"] == 25.0       # 200 paid back of 800 given
+    assert s["today"] == {**s["today"], "udhar": 800, "payment": 200, "sale": 120, "count": 4}
+    assert len(s["days"]) == 7 and s["days"][-1] == s["today"]
+    assert sum(d["count"] for d in s["days"][:-1]) == 0
+
+
+def test_stats_empty_ledger(client):
+    s = client.get("/api/stats?days=30").json()
+    assert s["outstanding"] == 0 and s["collection_rate"] == 0 and len(s["days"]) == 30
+
+
+def test_seed_builds_a_week_of_demo_data():
+    from datetime import datetime
+
+    from app.main import IST
+    from app.seed import demo_entries
+    now = datetime.now(IST)
+    rows = demo_entries(now)
+    assert len(rows) >= 35
+    assert {r.type for r in rows} == {"udhar", "payment", "sale"}
+    assert all(r.created_at <= now for r in rows)
+    assert len({r.created_at.date() for r in rows}) >= 6
+    owed = {}
+    for r in sorted(rows, key=lambda r: r.created_at):   # nobody ever pays back more than they owe
+        owed[r.customer] = owed.get(r.customer, 0) + {"udhar": r.amount, "payment": -r.amount, "sale": 0}[r.type]
+        assert owed[r.customer] >= 0

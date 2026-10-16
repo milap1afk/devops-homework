@@ -2,43 +2,198 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#14532d" />
     <title>Kirana Ledger</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛒</text></svg>" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <header>
-      <h1 id="shop">Kirana Ledger</h1>
-      <span id="version" class="muted"></span>
-    </header>
-    <main>
-      <section class="card">
-        <h2>New entry</h2>
-        <form id="entry-form">
-          <input id="customer" placeholder="Customer (e.g. Ramesh bhai)" required maxlength="80" />
-          <input id="amount" type="number" min="1" step="0.01" placeholder="Amount ₹" required />
-          <div class="types">
-            <label><input type="radio" name="type" value="udhar" checked /> उधार udhar</label>
-            <label><input type="radio" name="type" value="payment" /> वापस payment</label>
-            <label><input type="radio" name="type" value="sale" /> बिक्री sale</label>
+    <div class="app">
+      <!-- ============ sidebar (bottom tab bar on phones) ============ -->
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="logo">🛒</span>
+          <div>
+            <strong>Kirana Ledger</strong>
+            <small id="shop">Kirana Store</small>
           </div>
-          <input id="note" placeholder="Note (optional)" maxlength="200" />
-          <input id="apikey" type="password" placeholder="Shop API key" autocomplete="off" />
-          <button type="submit" id="save">Save entry</button>
-          <p id="form-msg" class="msg"></p>
-        </form>
-      </section>
+        </div>
+        <nav class="nav">
+          <a href="#dashboard" data-view="dashboard"><span class="ico">▦</span><span>Dashboard</span></a>
+          <a href="#ledger" data-view="ledger"><span class="ico">☰</span><span>Ledger</span></a>
+          <a href="#customers" data-view="customers"><span class="ico">👥</span><span>Customers</span></a>
+          <a href="#settings" data-view="settings"><span class="ico">⚙</span><span>Settings</span></a>
+        </nav>
+        <div class="status" id="status">
+          <span class="dot"></span>
+          <span id="status-text">Connecting…</span>
+        </div>
+      </aside>
 
-      <section class="card">
-        <h2>कौन कितना बाकी</h2>
-        <ul id="balances" class="list"></ul>
-      </section>
+      <!-- ============ main ============ -->
+      <div class="main">
+        <header class="topbar">
+          <div>
+            <h1 id="title">Dashboard</h1>
+            <p class="muted" id="today"></p>
+          </div>
+          <div class="top-actions">
+            <input id="search" type="search" placeholder="Search customer or note…" aria-label="Search" />
+            <button class="btn primary" id="new-entry"><span>＋</span> New entry</button>
+          </div>
+        </header>
 
-      <section class="card">
-        <h2>Entries</h2>
-        <ul id="entries" class="list"></ul>
-      </section>
-    </main>
+        <div id="banner" class="banner" hidden></div>
+
+        <!-- Dashboard -->
+        <section class="view" id="view-dashboard">
+          <div class="kpis">
+            <article class="kpi accent">
+              <span class="kpi-label">कुल बाकी · Outstanding</span>
+              <strong class="kpi-value" id="k-outstanding">—</strong>
+              <span class="kpi-sub" id="k-dues">—</span>
+            </article>
+            <article class="kpi">
+              <span class="kpi-label">आज उधार · Credit today</span>
+              <strong class="kpi-value udhar" id="k-udhar">—</strong>
+              <span class="kpi-sub" id="k-count">—</span>
+            </article>
+            <article class="kpi">
+              <span class="kpi-label">आज वापसी · Collected today</span>
+              <strong class="kpi-value payment" id="k-payment">—</strong>
+              <span class="kpi-sub" id="k-rate">—</span>
+            </article>
+            <article class="kpi">
+              <span class="kpi-label">आज बिक्री · Cash sales today</span>
+              <strong class="kpi-value sale" id="k-sale">—</strong>
+              <span class="kpi-sub" id="k-customers">—</span>
+            </article>
+          </div>
+
+          <div class="grid-2">
+            <article class="card">
+              <div class="card-head">
+                <h2>Last 7 days</h2>
+                <div class="legend">
+                  <span><i class="sw udhar"></i>Udhar</span>
+                  <span><i class="sw payment"></i>Payment</span>
+                  <span><i class="sw sale"></i>Sale</span>
+                </div>
+              </div>
+              <div id="chart" class="chart" role="img" aria-label="Udhar, payments and sales per day for the last 7 days"></div>
+            </article>
+
+            <article class="card">
+              <div class="card-head">
+                <h2>सबसे ज़्यादा बाकी</h2>
+                <a href="#customers" class="link">All customers →</a>
+              </div>
+              <ul id="top-dues" class="rows"></ul>
+            </article>
+          </div>
+
+          <article class="card">
+            <div class="card-head">
+              <h2>Recent activity</h2>
+              <a href="#ledger" class="link">Full ledger →</a>
+            </div>
+            <ul id="activity" class="feed"></ul>
+          </article>
+        </section>
+
+        <!-- Ledger -->
+        <section class="view" id="view-ledger" hidden>
+          <div class="toolbar">
+            <div class="chips" id="type-filter">
+              <button class="chip active" data-type="">All</button>
+              <button class="chip" data-type="udhar">उधार Udhar</button>
+              <button class="chip" data-type="payment">वापस Payment</button>
+              <button class="chip" data-type="sale">बिक्री Sale</button>
+            </div>
+            <span class="muted" id="ledger-count"></span>
+          </div>
+          <article class="card flush">
+            <table class="table">
+              <thead>
+                <tr><th>When</th><th>Customer</th><th>Type</th><th class="hide-sm">Note</th><th class="num">Amount</th><th></th></tr>
+              </thead>
+              <tbody id="ledger-rows"></tbody>
+            </table>
+          </article>
+        </section>
+
+        <!-- Customers -->
+        <section class="view" id="view-customers" hidden>
+          <p class="muted lead">कौन कितना बाकी — everyone who still owes the shop, biggest first.</p>
+          <div class="cust-grid" id="cust-grid"></div>
+        </section>
+
+        <!-- Settings -->
+        <section class="view" id="view-settings" hidden>
+          <article class="card narrow">
+            <h2>Shop API key</h2>
+            <p class="muted">Needed to add, edit or delete entries. Stored only in this browser.</p>
+            <form id="key-form" class="stack">
+              <input id="apikey" type="password" placeholder="X-API-Key" autocomplete="off" />
+              <div class="row">
+                <button class="btn primary" type="submit">Save key</button>
+                <button class="btn ghost" type="button" id="clear-key">Forget key</button>
+              </div>
+            </form>
+          </article>
+          <article class="card narrow">
+            <h2>Deployment</h2>
+            <dl class="facts" id="facts"></dl>
+          </article>
+        </section>
+      </div>
+    </div>
+
+    <!-- ============ new / edit entry modal ============ -->
+    <dialog id="entry-dialog" class="dialog">
+      <form id="entry-form" method="dialog" class="stack">
+        <div class="dialog-head">
+          <h2 id="dialog-title">New entry</h2>
+          <button type="button" class="icon-btn" id="close-dialog" aria-label="Close">✕</button>
+        </div>
+        <label class="field">
+          <span>Customer</span>
+          <input id="customer" list="customer-list" placeholder="e.g. Ramesh bhai" required maxlength="80" autocomplete="off" />
+          <datalist id="customer-list"></datalist>
+        </label>
+        <div class="seg" role="radiogroup" aria-label="Entry type">
+          <label class="seg-opt udhar"><input type="radio" name="type" value="udhar" checked /><span><b>उधार</b>Udhar</span></label>
+          <label class="seg-opt payment"><input type="radio" name="type" value="payment" /><span><b>वापस</b>Payment</span></label>
+          <label class="seg-opt sale"><input type="radio" name="type" value="sale" /><span><b>बिक्री</b>Sale</span></label>
+        </div>
+        <label class="field">
+          <span>Amount (₹)</span>
+          <input id="amount" type="number" inputmode="decimal" min="1" step="0.01" placeholder="0" required />
+        </label>
+        <div class="quick" id="quick-amounts"></div>
+        <label class="field">
+          <span>Note <em class="muted">(optional)</em></span>
+          <input id="note" placeholder="atta + daal" maxlength="200" />
+        </label>
+        <p class="confirm" id="confirm-line"></p>
+        <button class="btn primary big" type="submit" id="save">Save entry</button>
+      </form>
+    </dialog>
+
+    <!-- ============ customer history drawer ============ -->
+    <dialog id="history-dialog" class="dialog drawer">
+      <div class="dialog-head">
+        <h2 id="history-title">History</h2>
+        <button type="button" class="icon-btn" id="close-history" aria-label="Close">✕</button>
+      </div>
+      <div id="history-summary" class="history-summary"></div>
+      <ul id="history-rows" class="feed"></ul>
+    </dialog>
+
+    <div id="toasts" class="toasts" aria-live="polite"></div>
+    <button class="fab" id="fab" aria-label="New entry">＋</button>
+
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

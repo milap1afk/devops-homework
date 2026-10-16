@@ -1,5 +1,7 @@
 """Kirana ledger API (FastAPI)."""
-from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
+from datetime import datetime, timedelta, timezone
+
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response, status
 from prometheus_client import Counter
 from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy import case, func, select, text
@@ -8,11 +10,12 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .db import get_db
 from .models import Entry
-from .schemas import Balance, EntryIn, EntryOut, clean_name
+from .schemas import Balance, DayTotals, EntryIn, EntryOut, EntryType, Stats, clean_name
 
 app = FastAPI(title="Kirana Ledger API", version=settings.app_version)
 Instrumentator(excluded_handlers=["/metrics", "/health", "/ready"]).instrument(app).expose(app)
 LEDGER_ENTRIES = Counter("kirana_ledger_entries_total", "Ledger entries recorded", ["type"])
+IST = timezone(timedelta(hours=5, minutes=30))   # the shop's clock: "today" means today in India
 
 
 def require_api_key(x_api_key: str = Header(default="")):
@@ -52,10 +55,18 @@ def info():
 
 
 @app.get("/api/entries", response_model=list[EntryOut], tags=["ledger"])
-def list_entries(customer: str | None = None, db: Session = Depends(get_db)):
-    query = select(Entry).order_by(Entry.id.desc())
+def list_entries(customer: str | None = None, type: EntryType | None = None,
+                 q: str | None = Query(default=None, max_length=80),
+                 limit: int = Query(default=200, ge=1, le=1000), db: Session = Depends(get_db)):
+    """Newest first. Filter by exact customer, by type, or search customer/note with `q`."""
+    query = select(Entry).order_by(Entry.created_at.desc(), Entry.id.desc()).limit(limit)
     if customer:
         query = query.where(Entry.customer == clean_name(customer))
+    if type:
+        query = query.where(Entry.type == type)
+    if q:
+        like = f"%{q.strip()}%"
+        query = query.where(Entry.customer.ilike(like) | Entry.note.ilike(like))
     return db.scalars(query).all()
 
 
@@ -119,3 +130,38 @@ def customer_balance(name: str, db: Session = Depends(get_db)):
     customer = clean_name(name)
     total = _money(db.scalar(select(_signed).where(Entry.customer == customer)))
     return Balance(customer=customer, balance=total, reminder=_reminder(customer, total))
+
+
+def _ist_day(ts: datetime):
+    if ts.tzinfo is None:                     # SQLite hands back naive UTC
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts.astimezone(IST).date()
+
+
+@app.get("/api/stats", response_model=Stats, tags=["ledger"])
+def stats(days: int = Query(default=7, ge=1, le=90), db: Session = Depends(get_db)):
+    """Dashboard numbers: outstanding credit, today's totals and a per-day trend (IST)."""
+    today = datetime.now(IST).date()
+    first = today - timedelta(days=days - 1)
+    since = datetime.combine(first, datetime.min.time(), IST)
+    series = {first + timedelta(days=i): DayTotals(date=first + timedelta(days=i)) for i in range(days)}
+    for ts, kind, amount in db.execute(select(Entry.created_at, Entry.type, Entry.amount)
+                                       .where(Entry.created_at >= since)).all():
+        day = series.get(_ist_day(ts))
+        if day is not None:
+            setattr(day, kind, _money(getattr(day, kind) + float(amount)))
+            day.count += 1
+
+    owed = [float(b) for _, b in db.execute(select(Entry.customer, _signed).group_by(Entry.customer)).all()]
+    owed = [_money(b) for b in owed if _money(b) > 0]
+    given = _money(db.scalar(select(func.sum(Entry.amount)).where(Entry.type == "udhar")))
+    paid = _money(db.scalar(select(func.sum(Entry.amount)).where(Entry.type == "payment")))
+    return Stats(
+        outstanding=_money(sum(owed)),
+        customers_with_dues=len(owed),
+        customers_total=db.scalar(select(func.count(func.distinct(Entry.customer)))) or 0,
+        entries_total=db.scalar(select(func.count(Entry.id))) or 0,
+        collection_rate=round(paid / given * 100, 1) if given else 0.0,
+        today=series[today],
+        days=list(series.values()),
+    )
