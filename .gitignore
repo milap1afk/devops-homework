@@ -9,3 +9,6 @@ crash.log
 .env
 junit.xml
 coverage/
+__pycache__/
+*.pyc
+.venv/
