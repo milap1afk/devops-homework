@@ -1,9 +1,11 @@
 # Values used by Argo CD (gitops/argocd-application.yaml) on the local minikube cluster
+# Release = the git SHA whose pipeline went green: CI built, scanned and pushed exactly these images to GHCR.
+# Promoting a release is a one-line commit here; Argo CD sees it and rolls the cluster forward.
 backend:
-  image: { repository: ghcr.io/milap1afk/kirana-backend, tag: "2.0.0", pullPolicy: Never }   # built locally + `minikube image load`
+  image: { repository: ghcr.io/milap1afk/kirana-backend, tag: "f67ab0f7ac1ad3ebc67916110c940e9531d689fe", pullPolicy: IfNotPresent }
   autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 3, targetCPUUtilizationPercentage: 60 }
 frontend:
-  image: { repository: ghcr.io/milap1afk/kirana-frontend, tag: "2.0.0", pullPolicy: Never }
+  image: { repository: ghcr.io/milap1afk/kirana-frontend, tag: "f67ab0f7ac1ad3ebc67916110c940e9531d689fe", pullPolicy: IfNotPresent }
   autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 3, targetCPUUtilizationPercentage: 70 }
 
 secrets:
