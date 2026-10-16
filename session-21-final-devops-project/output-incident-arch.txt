@@ -1,0 +1,33 @@
+################ INCIDENT 2 (real): GitOps rollout of f67ab0f stuck - new Pods crash, old Pods keep serving ################
+# 1. IDENTIFY
+$ kubectl -n argocd get application kirana-final
+NAME           SYNC STATUS   HEALTH STATUS
+kirana-final   Synced        Progressing
+
+$ kubectl -n kirana get pods | grep -v loadgen
+NAME                               READY   STATUS                  RESTARTS        AGE
+kirana-backend-79d974c899-899rw    0/1     Init:CrashLoopBackOff   5 (2m18s ago)   5m39s
+kirana-backend-7cc94dbcb5-j9gc5    1/1     Running                 0               8m54s
+kirana-backend-7cc94dbcb5-xzsjv    1/1     Running                 0               8m12s
+kirana-frontend-756fcf9f9c-dfqld   1/1     Running                 0               8m54s
+kirana-frontend-756fcf9f9c-dvqjb   1/1     Running                 0               8m45s
+kirana-frontend-8575555c54-pb6ng   0/1     CrashLoopBackOff        5 (2m7s ago)    5m39s
+kirana-postgres-0                  1/1     Running                 0               8m47s
+
+# 2. INVESTIGATE
+$ kubectl -n kirana logs kirana-backend-79d974c899-899rw -c migrate --tail=1
+exec /usr/bin/sh: exec format error
+
+$ kubectl -n kirana logs kirana-frontend-8575555c54-pb6ng --previous --tail=1
+exec /docker-entrypoint.sh: exec format error
+
+$ kubectl get node minikube -o jsonpath='{.status.nodeInfo.architecture}'
+arm64
+
+$ docker manifest inspect -v ghcr.io/milap1afk/kirana-backend:f67ab0f7ac1ad3ebc67916110c940e9531d689fe | grep -E '"(architecture|os)"' | sort -u
+			"architecture": "amd64",
+			"os": "linux"
+
+$ curl -s -H "Host: kirana.local" localhost:8089/api/info
+{"shop":"Sharma Kirana Store","version":"2.0.0"}
+# Users are not affected: maxUnavailable keeps the 2.0.0 Pods Ready until a new Pod passes its readiness probe.

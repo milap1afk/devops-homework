@@ -1,6 +1,6 @@
 # Session 21 - Final DevOps project pipeline (Kirana ledger: FastAPI backend + Nginx frontend + PostgreSQL)
-# Build & test -> SAST -> SCA -> secret scan -> IaC scan -> Docker build (x2) -> Trivy image scan (x2)
-#   -> security gate -> push to GHCR with the git SHA tag (x2) -> deploy with Helm to Kubernetes -> smoke test
+# Build & test -> SAST -> SCA -> secret scan -> IaC scan -> Docker build (2 tiers x amd64/arm64) -> Trivy image scan (x4)
+#   -> security gate -> push to GHCR as one multi-arch image per tier, tagged with the git SHA -> deploy with Helm to Kubernetes -> smoke test
 name: "S21 Final DevOps Project"
 
 on:
@@ -111,39 +111,47 @@ jobs:
       - run: helm lint $P/helm/kirana --set secrets.apiKey=x --set secrets.postgresPassword=y
 
   docker-build:
-    name: "6. Docker build (${{ matrix.tier }})"
+    name: "6. Docker build (${{ matrix.tier }}, ${{ matrix.arch }})"
     needs: build-test
-    runs-on: ubuntu-latest
+    # native runners for each CPU: amd64 for GitHub/EKS nodes, arm64 for Apple Silicon minikube and Graviton
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     strategy:
-      matrix: { tier: [backend, frontend] }
+      matrix: { tier: [backend, frontend], arch: [amd64, arm64] }
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
       - uses: docker/build-push-action@v7
         with:
           context: ${{ env.P }}/application/${{ matrix.tier }}
+          platforms: linux/${{ matrix.arch }}
           build-args: APP_VERSION=${{ github.sha }}
-          tags: ${{ env.REGISTRY }}/kirana-${{ matrix.tier }}:${{ env.TAG }}
-          outputs: type=docker,dest=${{ runner.temp }}/${{ matrix.tier }}.tar
-          cache-from: type=gha,scope=s21-${{ matrix.tier }}
-          cache-to: type=gha,scope=s21-${{ matrix.tier }},mode=max
+          tags: ${{ env.REGISTRY }}/kirana-${{ matrix.tier }}:${{ env.TAG }}-${{ matrix.arch }}
+          outputs: type=docker,dest=${{ runner.temp }}/${{ matrix.tier }}-${{ matrix.arch }}.tar
+          cache-from: type=gha,scope=s21-${{ matrix.tier }}-${{ matrix.arch }}
+          cache-to: type=gha,scope=s21-${{ matrix.tier }}-${{ matrix.arch }},mode=max
       - uses: actions/upload-artifact@v7
-        with: { name: "s21-image-${{ matrix.tier }}", path: "${{ runner.temp }}/${{ matrix.tier }}.tar", retention-days: 3 }
+        with:
+          name: "s21-image-${{ matrix.tier }}-${{ matrix.arch }}"
+          path: "${{ runner.temp }}/${{ matrix.tier }}-${{ matrix.arch }}.tar"
+          retention-days: 3
 
   image-scan:
-    name: "7. Trivy image scan (${{ matrix.tier }})"
+    name: "7. Trivy image scan (${{ matrix.tier }}, ${{ matrix.arch }})"
     needs: docker-build
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix: { tier: [backend, frontend] }
+      matrix: { tier: [backend, frontend], arch: [amd64, arm64] }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
-        with: { name: "s21-image-${{ matrix.tier }}", path: "${{ runner.temp }}" }
+        with: { name: "s21-image-${{ matrix.tier }}-${{ matrix.arch }}", path: "${{ runner.temp }}" }
       - name: Trivy - fail on fixable HIGH/CRITICAL CVEs
         uses: aquasecurity/trivy-action@v0.36.0
-        with: { scan-type: image, input: "${{ runner.temp }}/${{ matrix.tier }}.tar", trivy-config: "${{ env.P }}/security/trivy.yaml" }
+        with:
+          scan-type: image
+          input: "${{ runner.temp }}/${{ matrix.tier }}-${{ matrix.arch }}.tar"
+          trivy-config: "${{ env.P }}/security/trivy.yaml"
 
   security-gate:
     name: "8. Security gate"
@@ -156,12 +164,12 @@ jobs:
         run: |
           echo "## 🔐 Security gate" >> "$GITHUB_STEP_SUMMARY"
           set -- $R
-          for name in SAST SCA "Secret scan" "IaC scan" "Image scan (both)"; do echo "- $name: $1" >> "$GITHUB_STEP_SUMMARY"; shift; done
+          for name in SAST SCA "Secret scan" "IaC scan" "Image scan (4 images)"; do echo "- $name: $1" >> "$GITHUB_STEP_SUMMARY"; shift; done
           for r in $R; do [ "$r" = success ] || { echo "::error::Security gate FAILED"; echo "**BLOCKED**" >> "$GITHUB_STEP_SUMMARY"; exit 1; }; done
           echo "Security gate PASSED"; echo "**PASSED**" >> "$GITHUB_STEP_SUMMARY"
 
   push-image:
-    name: "9. Push to GHCR (${{ matrix.tier }})"
+    name: "9. Push to GHCR (${{ matrix.tier }}, multi-arch)"
     needs: [security-gate, docker-build]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
@@ -170,14 +178,20 @@ jobs:
       matrix: { tier: [backend, frontend] }
     steps:
       - uses: actions/download-artifact@v8
-        with: { name: "s21-image-${{ matrix.tier }}", path: "${{ runner.temp }}" }
+        with: { pattern: "s21-image-${{ matrix.tier }}-*", path: "${{ runner.temp }}", merge-multiple: true }
+      - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
-      - name: Push the scanned image, tagged with the commit SHA (never "latest")
+      - name: Push the scanned images, then join them into one multi-arch tag = the commit SHA (never "latest")
         run: |
-          docker load -i ${{ runner.temp }}/${{ matrix.tier }}.tar
-          docker push $REGISTRY/kirana-${{ matrix.tier }}:$TAG
-          echo "Pushed \`$REGISTRY/kirana-${{ matrix.tier }}:$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          IMG=$REGISTRY/kirana-${{ matrix.tier }}
+          for arch in amd64 arm64; do
+            docker load -i ${{ runner.temp }}/${{ matrix.tier }}-$arch.tar
+            docker push $IMG:$TAG-$arch
+          done
+          docker buildx imagetools create -t $IMG:$TAG $IMG:$TAG-amd64 $IMG:$TAG-arm64
+          docker buildx imagetools inspect $IMG:$TAG
+          echo "Pushed \`$IMG:$TAG\` (linux/amd64 + linux/arm64)" >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
     name: "10. Deploy with Helm + verify"
