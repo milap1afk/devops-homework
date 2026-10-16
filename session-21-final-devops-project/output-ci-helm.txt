@@ -1,0 +1,36 @@
+$ helm upgrade --install kirana ./helm/kirana -n kirana --set backend.image.tag=$GITHUB_SHA ... --wait
+
+NAME  	NAMESPACE	REVISION	UPDATED                                	STATUS  	CHART       	APP VERSION
+kirana	kirana   	1       	2026-10-16 05:03:59.621846262 +0000 UTC	deployed	kirana-2.1.0	2.1.0      
+NAME                              READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES                                                                       SELECTOR
+deployment.apps/kirana-backend    2/2     2            2           21s   backend      ghcr.io/milap1afk/kirana-backend:f67ab0f7ac1ad3ebc67916110c940e9531d689fe    app.kubernetes.io/component=backend,app.kubernetes.io/instance=kirana
+deployment.apps/kirana-frontend   2/2     2            2           21s   frontend     ghcr.io/milap1afk/kirana-frontend:f67ab0f7ac1ad3ebc67916110c940e9531d689fe   app.kubernetes.io/component=frontend,app.kubernetes.io/instance=kirana
+
+NAME                               READY   AGE   CONTAINERS   IMAGES
+statefulset.apps/kirana-postgres   1/1     21s   postgres     postgres:17-alpine
+
+NAME                      TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE   SELECTOR
+service/kirana-backend    ClusterIP   10.96.221.226   <none>        80/TCP     21s   app.kubernetes.io/component=backend,app.kubernetes.io/instance=kirana
+service/kirana-frontend   ClusterIP   10.96.122.75    <none>        80/TCP     21s   app.kubernetes.io/component=frontend,app.kubernetes.io/instance=kirana
+service/kirana-postgres   ClusterIP   None            <none>        5432/TCP   21s   app.kubernetes.io/component=postgres,app.kubernetes.io/instance=kirana
+
+NAME                               CLASS   HOSTS          ADDRESS   PORTS   AGE
+ingress.networking.k8s.io/kirana   nginx   kirana.local             80      21s
+
+NAME                                                  REFERENCE                    TARGETS              MINPODS   MAXPODS   REPLICAS   AGE
+horizontalpodautoscaler.autoscaling/kirana-backend    Deployment/kirana-backend    cpu: <unknown>/60%   2         5         1          21s
+horizontalpodautoscaler.autoscaling/kirana-frontend   Deployment/kirana-frontend   cpu: <unknown>/70%   2         4         1          21s
+
+NAME                                           STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE   VOLUMEMODE
+persistentvolumeclaim/data-kirana-postgres-0   Bound    pvc-40d30071-99a6-460d-9101-f747386692b1   1Gi        RWO            standard       <unset>                 21s   Filesystem
+
+NAME                                   READY   STATUS    RESTARTS   AGE   IP            NODE                NOMINATED NODE   READINESS GATES
+pod/kirana-backend-68677c4648-4dlsl    1/1     Running   0          6s    10.244.0.12   dev-control-plane   <none>           <none>
+pod/kirana-backend-68677c4648-w6fjj    1/1     Running   0          21s   10.244.0.8    dev-control-plane   <none>           <none>
+pod/kirana-frontend-84bf666f5f-fw2t6   1/1     Running   0          6s    10.244.0.11   dev-control-plane   <none>           <none>
+pod/kirana-frontend-84bf666f5f-g22wx   1/1     Running   0          21s   10.244.0.7    dev-control-plane   <none>           <none>
+pod/kirana-postgres-0                  1/1     Running   0          21s   10.244.0.10   dev-control-plane   <none>           <none>
+
+# smoke test through the frontend nginx (like a browser): POST an entry, read the balance back
+{"id":1,"customer":"Ramesh","amount":500.0,"type":"udhar","note":"","created_at":"2026-10-16T05:04:24.389002Z"}
+{"customer":"Ramesh","balance":500.0,"reminder":"Ramesh ji, ₹500 बाकी हैं."}

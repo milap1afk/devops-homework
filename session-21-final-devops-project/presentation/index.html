@@ -35,6 +35,7 @@
   .dark .card { background: #15291e; border-color: #24402f; }
   .shot { width: 100%; height: 100%; min-height: 0; object-fit: contain; object-position: top center; border-radius: 12px; border: 1px solid var(--line); background: #fff; box-shadow: 0 10px 30px rgba(0,0,0,.12); }
   .shot.dark { background: #111; }
+  .shot.crop { object-fit: cover; object-position: top left; }
   .fill { flex: 1; min-height: 0; display: flex; gap: 22px; }
   .fill > * { flex: 1; min-width: 0; }
   .big { font-size: 54px; font-weight: 800; letter-spacing: -.02em; }
@@ -123,9 +124,9 @@
   <div class="kicker">The application</div>
   <h2>Ledger, customers and the entry flow</h2>
   <div class="fill" style="margin-top:14px">
-    <img class="shot" src="../screenshots/app-ledger.png" alt="Ledger" />
-    <img class="shot" src="../screenshots/app-customers.png" alt="Customers" />
-    <img class="shot" src="../screenshots/app-new-entry.png" alt="New entry" />
+    <img class="shot crop" src="../screenshots/app-ledger.png" alt="Ledger" />
+    <img class="shot crop" src="../screenshots/app-customers.png" alt="Customers" />
+    <img class="shot crop" src="../screenshots/app-new-entry.png" alt="New entry" />
   </div>
   <div class="footer"><span>Filter by type, search, edit/delete · running balance history · "Ramesh bhai ₹500 udhar — sahi hai?"</span><span>4</span></div>
 </section>
@@ -254,7 +255,7 @@
     <div class="step"><b>10 Deploy</b>Helm on kind + smoke test</div>
   </div>
   <div class="fill" style="margin-top:18px">
-    <img class="shot" src="../screenshots/pipeline.png" alt="GitHub Actions run" />
+    <img class="shot crop" src="../screenshots/pipeline.png" alt="GitHub Actions run" />
   </div>
   <div class="footer"><span>.github/workflows/s21-final.yml · tag = commit SHA, never "latest"</span><span>9</span></div>
 </section>
@@ -304,8 +305,8 @@
   <div class="kicker">Kubernetes + Helm · M8</div>
   <h2>One chart: Deployments, StatefulSet, Ingress, HPA</h2>
   <div class="cols" style="margin-top:14px">
-    <img class="shot dark" src="../screenshots/k8s-cluster.png" alt="kubectl get pods,svc,ingress,hpa" />
-    <img class="shot" src="../screenshots/k8s-ingress-after.png" alt="App through the Ingress" />
+    <img class="shot dark crop" src="../screenshots/k8s-cluster.png" alt="kubectl get pods,svc,ingress,hpa" />
+    <img class="shot crop" src="../screenshots/k8s-ingress-after.png" alt="App through the Ingress" />
   </div>
   <div class="footer"><span>helm/kirana · liveness /health · readiness /ready · startup probe · requests/limits · Secret never in Git</span><span>12</span></div>
 </section>
@@ -315,10 +316,10 @@
   <div class="kicker">Observability · M9</div>
   <h2>Prometheus scrapes it, Grafana shows it</h2>
   <div class="fill" style="margin-top:14px">
-    <img class="shot" src="../screenshots/prometheus-targets.png" alt="Prometheus targets UP" style="flex:1" />
-    <img class="shot dark" src="../screenshots/grafana-kirana.png" alt="Grafana dashboard" style="flex:1.3" />
+    <img class="shot crop" src="../screenshots/prometheus-targets.png" alt="Prometheus targets UP" style="flex:1" />
+    <img class="shot dark crop" src="../screenshots/grafana-kirana.png" alt="Grafana dashboard" style="flex:1.3" />
   </div>
-  <div class="footer"><span>ServiceMonitor · alerts KiranaBackendDown / HighErrorRate / SlowRequests · 6-panel dashboard shipped in the chart</span><span>13</span></div>
+  <div class="footer"><span>3/3 targets UP · 3 alert rules · dashboard shipped in the chart · gap at 11:27 = Prometheus restart on a memory-starved node</span><span>13</span></div>
 </section>
 
 <!-- 14 -->
@@ -345,13 +346,16 @@
   <div class="kicker">Live demo · M10</div>
   <h2>Commit → pipeline → cluster updates itself</h2>
   <div class="cols wide" style="margin-top:14px">
-    <div class="timeline" id="tl"><span class="hl">f67ab0f</span>  release 2.1.0 pushed       → pipeline <span class="hl">13/13 green</span>
-<span class="hl">dad5b99</span>  promote f67ab0f (1 line)  → Argo CD syncs
-         new Pods: <span class="bad">exec format error</span>   (old Pods keep serving)
+    <div class="timeline" id="tl"><span class="hl">fb74dbf</span>  release 2.1.0 pushed      → pipeline <span class="hl">13/13 green</span>
+<span class="hl">c8e01c9</span>  promote it (1-line commit) → Argo CD syncs
+         new Pods: <span class="bad">exec format error</span>
+         (old 2.0.0 Pods keep serving users)
          cause: CI built amd64, Mac minikube is arm64
-<span class="hl">3d274a5</span>  multi-arch build fix       → pipeline green, :sha = amd64+arm64
-<span class="hl">promote</span>  values-minikube → new SHA   → Argo CD rolls 2.0.0 → 2.1.0
-         <span class="hl">0 downtime · same image CI scanned</span></div>
+<span class="hl">c722d8a</span>  multi-arch build fix      → <span class="hl">17/17 green</span>
+         one :sha tag = amd64 + arm64
+<span class="hl">41ee491</span>  promote fixed images      → Argo CD rolls
+         2.0.0 → 2.1.0 in ~6 min, <span class="hl">0 downtime</span>
+         running image = exactly what CI scanned</div>
     <div style="display:flex;flex-direction:column;gap:14px;min-height:0">
       <img class="shot" src="../screenshots/k8s-ingress-before.png" alt="before: 2.0.0" style="flex:1" />
       <img class="shot" src="../screenshots/k8s-ingress-after.png" alt="after: 2.1.0" style="flex:1" />

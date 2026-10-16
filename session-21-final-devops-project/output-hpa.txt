@@ -1,0 +1,26 @@
+$ kubectl -n kirana get hpa kirana-backend
+NAME             REFERENCE                   TARGETS         MINPODS   MAXPODS   REPLICAS   AGE
+kirana-backend   Deployment/kirana-backend   cpu: 150%/60%   2         3         3          8d
+
+$ kubectl -n kirana describe hpa kirana-backend | sed -n "/Events/,$p"
+Events:
+  Type     Reason             Age                  From                       Message
+  ----     ------             ----                 ----                       -------
+  Warning  FailedGetScale     50m (x108 over 8d)   horizontal-pod-autoscaler  Unauthorized
+  Normal   SuccessfulRescale  42m (x7 over 5d20h)  horizontal-pod-autoscaler  New size: 2; reason: All metrics below target
+  Normal   SuccessfulRescale  94s (x8 over 5d20h)  horizontal-pod-autoscaler  New size: 3; reason: cpu resource utilization (percentage of request) above target
+
+$ kubectl -n kirana get pods -l app.kubernetes.io/component=backend
+NAME                              READY   STATUS    RESTARTS        AGE
+kirana-backend-6774f67bcd-78bjk   1/1     Running   6 (35h ago)     8d
+kirana-backend-6774f67bcd-jtfkq   1/1     Running   0               94s
+kirana-backend-6774f67bcd-wpfwj   1/1     Running   1 (5d11h ago)   5d17h
+
+$ kubectl top pods -n kirana
+NAME                               CPU(cores)   MEMORY(bytes)   
+kirana-backend-6774f67bcd-78bjk    74m          65Mi            
+kirana-backend-6774f67bcd-jtfkq    119m         67Mi            
+kirana-backend-6774f67bcd-wpfwj    76m          70Mi            
+kirana-frontend-7fdd6d5d7d-c97r2   3m           4Mi             
+kirana-frontend-7fdd6d5d7d-v5v59   3m           4Mi             
+kirana-postgres-0                  63m          38Mi            

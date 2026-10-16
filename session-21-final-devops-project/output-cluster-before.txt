@@ -1,0 +1,46 @@
+$ kubectl get nodes -o wide | cut -c1-110
+NAME       STATUS   ROLES           AGE   VERSION   INTERNAL-IP    EXTERNAL-IP   OS-IMAGE                     
+minikube   Ready    control-plane   8d    v1.37.0   192.168.49.2   <none>        Debian GNU/Linux 12 (bookworm
+
+$ kubectl -n argocd get application kirana-final
+NAME           SYNC STATUS   HEALTH STATUS
+kirana-final   Synced        Healthy
+
+$ kubectl -n kirana get pods -o wide | cut -c1-120
+NAME                               READY   STATUS      RESTARTS        AGE     IP             NODE       NOMINATED NODE 
+kirana-backend-6774f67bcd-78bjk    1/1     Running     6 (35h ago)     8d      10.244.0.65    minikube   <none>         
+kirana-backend-6774f67bcd-wpfwj    1/1     Running     1 (5d11h ago)   5d17h   10.244.0.110   minikube   <none>         
+kirana-frontend-7fdd6d5d7d-c97r2   1/1     Running     3 (35h ago)     8d      10.244.0.64    minikube   <none>         
+kirana-frontend-7fdd6d5d7d-v5v59   1/1     Running     3 (35h ago)     8d      10.244.0.67    minikube   <none>         
+kirana-postgres-0                  1/1     Running     0               8d      10.244.0.105   minikube   <none>         
+loadgen                            0/1     Completed   0               8d      10.244.0.106   minikube   <none>         
+
+$ kubectl -n kirana get svc
+NAME              TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+kirana-backend    ClusterIP   10.99.150.51    <none>        80/TCP     8d
+kirana-frontend   ClusterIP   10.100.57.234   <none>        80/TCP     8d
+kirana-postgres   ClusterIP   None            <none>        5432/TCP   8d
+
+$ kubectl -n kirana get ingress
+NAME     CLASS   HOSTS          ADDRESS        PORTS   AGE
+kirana   nginx   kirana.local   192.168.49.2   80      8d
+
+$ kubectl -n kirana get hpa
+NAME              REFERENCE                    TARGETS        MINPODS   MAXPODS   REPLICAS   AGE
+kirana-backend    Deployment/kirana-backend    cpu: 37%/60%   2         3         2          8d
+kirana-frontend   Deployment/kirana-frontend   cpu: 10%/70%   2         3         2          8d
+
+$ kubectl -n kirana get sts,pvc
+NAME                               READY   AGE
+statefulset.apps/kirana-postgres   1/1     8d
+
+NAME                                           STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+persistentvolumeclaim/data-kirana-postgres-0   Bound    pvc-7a2d5651-8ece-493b-9945-1cec20933b97   1Gi        RWO            standard       <unset>                 8d
+
+$ kubectl -n kirana get deploy -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,IMAGE:.spec.template.spec.containers[0].image
+NAME              READY   IMAGE
+kirana-backend    2       ghcr.io/milap1afk/kirana-backend:2.0.0
+kirana-frontend   2       ghcr.io/milap1afk/kirana-frontend:2.0.0
+
+$ curl -s -H "Host: kirana.local" localhost:8089/api/info
+{"shop":"Sharma Kirana Store","version":"2.0.0"}

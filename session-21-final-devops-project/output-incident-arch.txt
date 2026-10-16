@@ -1,3 +1,5 @@
+# Note: commits were later re-authored (author email fix), so hashes changed: f67ab0f->fb74dbf, dad5b99->c8e01c9,
+#       3d274a5->c722d8a, 457326c->41ee491. Image tags on GHCR keep the original build SHAs shown below.
 ################ INCIDENT 2 (real): GitOps rollout of f67ab0f stuck - new Pods crash, old Pods keep serving ################
 # 1. IDENTIFY
 $ kubectl -n argocd get application kirana-final

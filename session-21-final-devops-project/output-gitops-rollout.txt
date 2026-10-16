@@ -1,0 +1,74 @@
+# Note: commits were later re-authored (author email fix), so hashes changed: f67ab0f->fb74dbf, dad5b99->c8e01c9,
+#       3d274a5->c722d8a, 457326c->41ee491. Image tags on GHCR keep the original build SHAs shown below.
+# GitOps rollout: commit dad5b99 pushed at 10:35:44 IST; Argo CD polls the repo and syncs automatically
+TIME    ARGO SYNC/HEALTH     REVISION   BACKEND IMAGE TAG          READY  /api/info
+t+3s    Synced/Degraded      f67ab0f    2.0.0                      3/4    2.0.0
+t+15s   Synced/Degraded      f67ab0f    2.0.0                      3/4    2.0.0
+t+27s   Synced/Degraded      f67ab0f    2.0.0                      3/4    2.0.0
+t+38s   Synced/Degraded      f67ab0f    2.0.0                      3/4    2.0.0
+t+50s   Synced/Degraded      f67ab0f    2.0.0                      3/3    2.0.0
+t+60s   Synced/Degraded      f67ab0f    2.0.0                      3/3    2.0.0
+t+70s   Synced/Degraded      f67ab0f    2.0.0                      3/3    2.0.0
+t+80s   Synced/Degraded      f67ab0f    2.0.0                      3/3    2.0.0
+t+91s   Synced/Degraded      f67ab0f    2.0.0                      3/3    2.0.0
+t+101s  Synced/Degraded      f67ab0f    2.0.0                      3/3    2.0.0
+t+112s  Synced/Degraded      dad5b99    f67ab0f7ac1a               3/4    2.0.0
+t+122s  Synced/Progressing   dad5b99    f67ab0f7ac1a               3/4    2.0.0
+t+133s  Synced/Progressing   dad5b99    f67ab0f7ac1a               3/4    2.0.0
+t+143s  Synced/Progressing   dad5b99    f67ab0f7ac1a               3/4    2.0.0
+t+153s  Synced/Progressing   dad5b99    f67ab0f7ac1a               3/4    2.0.0
+t+164s  Synced/Progressing   dad5b99    f67ab0f7ac1a               3/4    2.0.0
+t+174s  Synced/Progressing   dad5b99    f67ab0f7ac1a               3/4    2.0.0
+t+184s  Synced/Progressing   dad5b99    f67ab0f7ac1a               3/4    2.0.0
+t+195s  Synced/Progressing   dad5b99    f67ab0f7ac1a               3/4    2.0.0
+t+205s  Synced/Progressing   dad5b99    f67ab0f7ac1a               3/4    2.0.0
+t+215s  Synced/Progressing   dad5b99    f67ab0f7ac1a               3/4    2.0.0
+t+225s  Synced/Progressing   dad5b99    f67ab0f7ac1a               3/4    2.0.0
+t+236s  Synced/Progressing   dad5b99    f67ab0f7ac1a               3/4    2.0.0
+t+246s  Synced/Progressing   dad5b99    f67ab0f7ac1a               3/4    2.0.0
+t+256s  Synced/Progressing   dad5b99    f67ab0f7ac1a               3/4    2.0.0
+t+267s  Synced/Progressing   dad5b99    f67ab0f7ac1a               3/4    2.0.0
+t+277s  Synced/Progressing   dad5b99    f67ab0f7ac1a               3/4    2.0.0
+t+287s  Synced/Progressing   dad5b99    f67ab0f7ac1a               2/3    2.0.0
+t+298s  Synced/Progressing   dad5b99    f67ab0f7ac1a               2/3    2.0.0
+t+308s  Synced/Progressing   dad5b99    f67ab0f7ac1a               2/3    2.0.0
+t+318s  Synced/Progressing   dad5b99    f67ab0f7ac1a               2/3    2.0.0
+t+328s  Synced/Progressing   dad5b99    f67ab0f7ac1a               2/3    2.0.0
+t+339s  Synced/Progressing   dad5b99    f67ab0f7ac1a               2/3    2.0.0
+t+349s  Synced/Progressing   dad5b99    f67ab0f7ac1a               2/3    2.0.0
+t+359s  Synced/Progressing   dad5b99    f67ab0f7ac1a               2/3    2.0.0
+t+369s  Synced/Progressing   dad5b99    f67ab0f7ac1a               2/3    2.0.0
+t+380s  Synced/Progressing   dad5b99    f67ab0f7ac1a               2/3    2.0.0
+t+390s  Synced/Progressing   dad5b99    f67ab0f7ac1a               2/3    2.0.0
+t+400s  Synced/Progressing   dad5b99    f67ab0f7ac1a               2/3    2.0.0
+t+410s  Synced/Progressing   dad5b99    f67ab0f7ac1a               2/3    2.0.0
+
+# Fix promoted: commit 457326c (multi-arch images from 3d274a5) pushed at 10:59:23 IST
+TIME    ARGO SYNC/HEALTH     REVISION   BACKEND IMAGE TAG          READY  /api/info
+t+2s    Synced/Degraded      3d274a5    f67ab0f7ac1a               2/3    2.0.0
+t+12s   Synced/Degraded      3d274a5    f67ab0f7ac1a               2/3    2.0.0
+t+23s   Synced/Degraded      3d274a5    f67ab0f7ac1a               2/3    2.0.0
+t+33s   Synced/Degraded      3d274a5    f67ab0f7ac1a               2/3    2.0.0
+t+43s   Synced/Degraded      3d274a5    f67ab0f7ac1a               2/3    2.0.0
+t+53s   Synced/Degraded      3d274a5    f67ab0f7ac1a               2/3    2.0.0
+t+64s   Synced/Degraded      3d274a5    f67ab0f7ac1a               2/3    2.0.0
+t+74s   Synced/Degraded      3d274a5    f67ab0f7ac1a               2/3    2.0.0
+t+86s   OutOfSync/Degraded   457326c    3d274a598972               2/3    2.0.0
+t+96s   Synced/Progressing   457326c    3d274a598972               2/3    2.0.0
+t+107s  Synced/Progressing   457326c    3d274a598972               2/3    2.0.0
+t+136s  Synced/Progressing   457326c    3d274a598972               2/3    2.0.0
+t+153s  Synced/Progressing   457326c    3d274a598972               2/3    2.0.0
+t+190s  Synced/Progressing   457326c    3d274a598972               3/3    
+t+211s  Synced/Progressing   457326c    3d274a598972               2/2    3d274a598972
+t+229s  Synced/Progressing   457326c    3d274a598972               2/3    3d274a598972
+t+259s  Synced/Progressing   457326c    3d274a598972               2/3    2.0.0
+t+272s  Synced/Progressing   457326c    3d274a598972               2/3    2.0.0
+t+284s  Synced/Progressing   457326c    3d274a598972               2/3    2.0.0
+t+297s  Synced/Progressing   457326c    3d274a598972               2/3    3d274a598972
+t+312s  Synced/Progressing   457326c    3d274a598972               2/3    3d274a598972
+t+324s  Synced/Progressing   457326c    3d274a598972               2/3    2.0.0
+t+334s  Synced/Progressing   457326c    3d274a598972               2/2    3d274a598972
+t+345s  Synced/Degraded      457326c    3d274a598972               2/2    3d274a598972
+t+355s  Synced/Degraded      457326c    3d274a598972               2/2    3d274a598972
+t+365s  Synced/Healthy       457326c    3d274a598972               2/2    3d274a598972
+t+376s  Synced/Healthy       457326c    3d274a598972               2/2    3d274a598972

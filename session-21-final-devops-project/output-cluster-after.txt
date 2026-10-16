@@ -1,0 +1,34 @@
+$ kubectl -n argocd get application kirana-final
+NAME           SYNC STATUS   HEALTH STATUS
+kirana-final   Synced        Healthy
+
+$ kubectl -n kirana get pods -o wide | grep -v loadgen | cut -c1-118
+NAME                               READY   STATUS      RESTARTS   AGE     IP             NODE       NOMINATED NODE   R
+kirana-backend-5dfcf8499f-m46kb    1/1     Running     0          2m43s   10.244.0.129   minikube   <none>           <
+kirana-backend-5dfcf8499f-sffbb    1/1     Running     0          9m16s   10.244.0.128   minikube   <none>           <
+kirana-backend-5dfcf8499f-t8wzw    1/1     Running     0          11m     10.244.0.125   minikube   <none>           <
+kirana-frontend-6c6dc59b6c-hwt99   1/1     Running     0          10m     10.244.0.127   minikube   <none>           <
+kirana-frontend-6c6dc59b6c-tjrnz   1/1     Running     0          11m     10.244.0.126   minikube   <none>           <
+kirana-postgres-0                  1/1     Running     0          37m     10.244.0.119   minikube   <none>           <
+
+$ kubectl -n kirana get svc,ingress
+NAME                      TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+service/kirana-backend    ClusterIP   10.99.150.51    <none>        80/TCP     8d
+service/kirana-frontend   ClusterIP   10.100.57.234   <none>        80/TCP     8d
+service/kirana-postgres   ClusterIP   None            <none>        5432/TCP   8d
+
+NAME                               CLASS   HOSTS          ADDRESS        PORTS   AGE
+ingress.networking.k8s.io/kirana   nginx   kirana.local   192.168.49.2   80      8d
+
+$ kubectl -n kirana get hpa
+NAME              REFERENCE                    TARGETS         MINPODS   MAXPODS   REPLICAS   AGE
+kirana-backend    Deployment/kirana-backend    cpu: 145%/60%   2         3         3          8d
+kirana-frontend   Deployment/kirana-frontend   cpu: 20%/70%    2         3         2          8d
+
+$ kubectl -n kirana get deploy -o 'custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,IMAGE:.spec.template.spec.containers[0].image'
+NAME              READY   IMAGE
+kirana-backend    3       ghcr.io/milap1afk/kirana-backend:3d274a5989723aebb67ee8bc3c9ba632b2c4947e
+kirana-frontend   2       ghcr.io/milap1afk/kirana-frontend:3d274a5989723aebb67ee8bc3c9ba632b2c4947e
+
+$ curl -s -H "Host: kirana.local" localhost:8089/api/info
+{"shop":"Sharma Kirana Store","version":"3d274a5989723aebb67ee8bc3c9ba632b2c4947e"}

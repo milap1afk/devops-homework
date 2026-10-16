@@ -1,0 +1,22 @@
+$ curl -s localhost:3000/api/stats      # key fields
+{
+  "outstanding": 5310.0,
+  "customers_with_dues": 6,
+  "collection_rate": 33.4,
+  "today": {
+    "date": "2026-10-16",
+    "udhar": 1450.0,
+    "payment": 400.0,
+    "sale": 0.0,
+    "count": 6
+  }
+}
+
+$ curl -s localhost:8001/metrics | grep -E "^(kirana_|http_requests_total)"
+kirana_ledger_entries_total{type="udhar"} 1.0
+kirana_ledger_entries_created{type="udhar"} 1.7921269731306372e+09
+http_requests_total{handler="/api/info",method="GET",status="2xx"} 10.0
+http_requests_total{handler="/api/customers",method="GET",status="2xx"} 7.0
+http_requests_total{handler="/api/entries",method="GET",status="2xx"} 13.0
+http_requests_total{handler="/api/stats",method="GET",status="2xx"} 7.0
+http_requests_total{handler="/api/entries",method="POST",status="2xx"} 1.0
