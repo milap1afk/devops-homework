@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kirana Ledger — Session 21 Capstone</title>
+<style>
+  :root {
+    --ink: #17201a; --muted: #5f6b62; --line: #e1e6df; --bg: #f4f5f1; --panel: #fff;
+    --brand: #15803d; --deep: #10241a; --udhar: #c2410c; --pay: #15803d; --sale: #1d4ed8;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0b120e; }
+  body { font: 22px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Devanagari", sans-serif; color: var(--ink); overflow: hidden; }
+  .deck { position: relative; width: 100vw; height: 100vh; }
+  .slide {
+    position: absolute; left: 50%; top: 50%; width: 1280px; height: 720px; transform-origin: center;
+    background: var(--bg); padding: 56px 72px; display: none; flex-direction: column; overflow: hidden;
+  }
+  .slide.active { display: flex; }
+  .slide.dark { background: var(--deep); color: #e8f1eb; }
+  .slide.dark .muted { color: #a9bcb0; }
+  h1 { font-size: 64px; line-height: 1.05; margin: 0 0 18px; letter-spacing: -.02em; }
+  h2 { font-size: 40px; margin: 0 0 6px; letter-spacing: -.015em; }
+  h3 { font-size: 24px; margin: 0 0 8px; }
+  .kicker { text-transform: uppercase; letter-spacing: .14em; font-size: 15px; font-weight: 700; color: var(--brand); margin-bottom: 10px; }
+  .dark .kicker { color: #4ade80; }
+  .muted { color: var(--muted); }
+  .sub { font-size: 24px; margin: 0 0 22px; }
+  ul.b { margin: 0; padding-left: 26px; } ul.b li { margin: 6px 0; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; flex: 1; min-height: 0; }
+  .cols.wide { grid-template-columns: 1.35fr 1fr; }
+  .cols.three { grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px 22px; }
+  .dark .card { background: #15291e; border-color: #24402f; }
+  .shot { width: 100%; height: 100%; min-height: 0; object-fit: contain; object-position: top center; border-radius: 12px; border: 1px solid var(--line); background: #fff; box-shadow: 0 10px 30px rgba(0,0,0,.12); }
+  .shot.dark { background: #111; }
+  .fill { flex: 1; min-height: 0; display: flex; gap: 22px; }
+  .fill > * { flex: 1; min-width: 0; }
+  .big { font-size: 54px; font-weight: 800; letter-spacing: -.02em; }
+  .stat { display: flex; flex-direction: column; }
+  .stat small { color: var(--muted); font-size: 17px; }
+  .pill { display: inline-block; padding: 3px 12px; border-radius: 99px; font-size: 16px; font-weight: 700; }
+  .udhar { color: var(--udhar); } .pay { color: var(--pay); } .sale { color: var(--sale); }
+  .p-udhar { background: #fff1e8; color: var(--udhar); } .p-pay { background: #e9f8ee; color: var(--pay); } .p-sale { background: #eaf0ff; color: var(--sale); }
+  table { border-collapse: collapse; width: 100%; font-size: 19px; }
+  td, th { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  th { font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  code, .mono { font-family: ui-monospace, Menlo, monospace; font-size: .85em; }
+  code { background: rgba(21,128,61,.09); padding: 1px 6px; border-radius: 6px; }
+  .dark code { background: rgba(74,222,128,.14); }
+  .flow { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
+  .flow .step { flex: 1; min-width: 120px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 16px; }
+  .flow .step b { display: block; font-size: 18px; margin-bottom: 2px; }
+  .flow .arrow { align-self: center; color: var(--muted); font-size: 22px; }
+  .gate { border-color: var(--udhar) !important; background: #fff6f0 !important; }
+  .ok { color: var(--pay); font-weight: 700; }
+  .footer { position: absolute; left: 72px; right: 72px; bottom: 22px; display: flex; justify-content: space-between; font-size: 14px; color: var(--muted); }
+  .dark .footer { color: #7f9887; }
+  .arch { width: 100%; height: 100%; }
+  .arch text { font-family: system-ui, sans-serif; }
+  .timeline { font-family: ui-monospace, Menlo, monospace; font-size: 15px; background: #111a14; color: #cfe3d5; border-radius: 12px; padding: 16px 18px; white-space: pre; overflow: hidden; }
+  .timeline .hl { color: #4ade80; } .timeline .bad { color: #fb923c; }
+  .nav { position: fixed; right: 16px; bottom: 12px; color: #9fb3a6; font: 13px system-ui; opacity: .7; }
+  @media print {
+    @page { size: 1280px 720px; margin: 0; }
+    html, body { background: none; overflow: visible; height: auto; }
+    .deck { width: auto; height: auto; }
+    .slide { position: relative; left: auto; top: auto; transform: none !important; display: flex !important; page-break-after: always; break-after: page; }
+    .nav { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+<!-- 1 -->
+<section class="slide dark">
+  <div style="margin-top:auto">
+    <div class="kicker">DevOps course · Session 21 capstone</div>
+    <h1>Kirana Ledger 🛒</h1>
+    <p class="sub" style="font-size:30px;max-width:900px">A credit book for a small Indian grocery shop, taken from a laptop to a monitored, auto-scaling Kubernetes cluster.</p>
+    <p class="muted">Milap Kothari · <span class="mono">github.com/milap1afk/devops-homework</span></p>
+  </div>
+  <div style="margin-top:auto;display:flex;gap:10px;flex-wrap:wrap;font-size:16px">
+    <span class="pill p-pay">FastAPI</span><span class="pill p-pay">PostgreSQL + Alembic</span><span class="pill p-pay">Vite + Nginx</span>
+    <span class="pill p-sale">Docker</span><span class="pill p-sale">GitHub Actions</span><span class="pill p-sale">Trivy · Semgrep · Gitleaks</span>
+    <span class="pill p-udhar">Terraform (VPC + EKS)</span><span class="pill p-udhar">Helm · Ingress · HPA</span><span class="pill p-udhar">Prometheus · Grafana · Argo CD</span>
+  </div>
+</section>
+
+<!-- 2 -->
+<section class="slide">
+  <div class="kicker">The problem</div>
+  <h2>Every kirana shop runs on <em>udhar</em></h2>
+  <p class="sub muted">Neighbours take groceries on credit and pay back later. Today that lives in a paper notebook.</p>
+  <div class="cols three" style="flex:0 0 auto">
+    <div class="card"><span class="pill p-udhar">उधार udhar</span><h3 style="margin-top:10px">Credit given</h3><p class="muted">Balance goes <b class="udhar">up</b></p></div>
+    <div class="card"><span class="pill p-pay">वापस payment</span><h3 style="margin-top:10px">Credit paid back</h3><p class="muted">Balance goes <b class="pay">down</b></p></div>
+    <div class="card"><span class="pill p-sale">बिक्री sale</span><h3 style="margin-top:10px">Cash sale</h3><p class="muted">Counted in today's takings</p></div>
+  </div>
+  <ul class="b" style="margin-top:26px">
+    <li><b>कौन कितना बाकी</b> — who owes how much, biggest first</li>
+    <li>"Ramesh bhai", "Rameshbhai", "Shri Ramesh ji" → one customer <b>Ramesh</b></li>
+    <li>One-tap WhatsApp reminder: <i>"Ramesh ji, ₹300 बाकी हैं."</i></li>
+  </ul>
+  <div class="footer"><span>Kirana Ledger</span><span>2</span></div>
+</section>
+
+<!-- 3 -->
+<section class="slide">
+  <div class="kicker">The application · v2.1.0</div>
+  <h2>A real dashboard, not a CRUD page</h2>
+  <div class="fill" style="margin-top:14px">
+    <img class="shot" src="../screenshots/app-dashboard-light.png" alt="Dashboard" style="flex:2.2" />
+    <img class="shot" src="../screenshots/app-mobile-dashboard.png" alt="Mobile dashboard" style="flex:.75" />
+  </div>
+  <div class="footer"><span>KPIs · 7-day chart · top dues · activity feed · phone layout · dark mode</span><span>3</span></div>
+</section>
+
+<!-- 4 -->
+<section class="slide">
+  <div class="kicker">The application</div>
+  <h2>Ledger, customers and the entry flow</h2>
+  <div class="fill" style="margin-top:14px">
+    <img class="shot" src="../screenshots/app-ledger.png" alt="Ledger" />
+    <img class="shot" src="../screenshots/app-customers.png" alt="Customers" />
+    <img class="shot" src="../screenshots/app-new-entry.png" alt="New entry" />
+  </div>
+  <div class="footer"><span>Filter by type, search, edit/delete · running balance history · "Ramesh bhai ₹500 udhar — sahi hai?"</span><span>4</span></div>
+</section>
+
+<!-- 5 -->
+<section class="slide">
+  <div class="kicker">Architecture</div>
+  <h2>From git push to a monitored cluster</h2>
+  <svg class="arch" viewBox="0 0 1136 520" role="img" aria-label="Architecture diagram">
+    <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#5f6b62"/></marker></defs>
+    <g font-size="17">
+      <rect x="0" y="20" width="150" height="60" rx="12" fill="#fff" stroke="#cfd6cc"/><text x="75" y="56" text-anchor="middle" font-weight="700">Developer</text>
+      <rect x="200" y="20" width="150" height="60" rx="12" fill="#fff" stroke="#cfd6cc"/><text x="275" y="56" text-anchor="middle" font-weight="700">GitHub (main)</text>
+      <rect x="400" y="0" width="420" height="100" rx="12" fill="#eaf0ff" stroke="#9db4f5"/>
+      <text x="610" y="28" text-anchor="middle" font-weight="700">GitHub Actions · 10 stages</text>
+      <text x="610" y="55" text-anchor="middle" font-size="15">pytest · build · Semgrep · SCA · Gitleaks · IaC scan</text>
+      <text x="610" y="78" text-anchor="middle" font-size="15">Docker amd64+arm64 · Trivy ×4 · security gate</text>
+      <rect x="870" y="20" width="200" height="60" rx="12" fill="#fff" stroke="#cfd6cc"/><text x="970" y="47" text-anchor="middle" font-weight="700">GHCR</text><text x="970" y="68" text-anchor="middle" font-size="14">image tag = git SHA</text>
+      <line x1="150" y1="50" x2="198" y2="50" stroke="#5f6b62" stroke-width="2" marker-end="url(#a)"/>
+      <line x1="350" y1="50" x2="398" y2="50" stroke="#5f6b62" stroke-width="2" marker-end="url(#a)"/>
+      <line x1="820" y1="50" x2="868" y2="50" stroke="#5f6b62" stroke-width="2" marker-end="url(#a)"/>
+
+      <rect x="0" y="160" width="250" height="120" rx="12" fill="#fff1e8" stroke="#f5b48c"/>
+      <text x="125" y="192" text-anchor="middle" font-weight="700">Terraform → AWS</text>
+      <text x="125" y="220" text-anchor="middle" font-size="15">VPC · 2 public + 2 private</text>
+      <text x="125" y="242" text-anchor="middle" font-size="15">NAT · EKS + node group</text>
+      <text x="125" y="264" text-anchor="middle" font-size="15">KMS · ECR · ap-south-1</text>
+
+      <rect x="300" y="140" width="836" height="370" rx="16" fill="#e9f8ee" stroke="#86d19f"/>
+      <text x="320" y="170" font-weight="700">Kubernetes · namespace kirana · Helm chart "kirana"</text>
+      <rect x="330" y="190" width="170" height="60" rx="10" fill="#fff" stroke="#cfd6cc"/><text x="415" y="217" text-anchor="middle" font-weight="700">Ingress</text><text x="415" y="238" text-anchor="middle" font-size="14">kirana.local</text>
+      <rect x="560" y="190" width="220" height="60" rx="10" fill="#fff" stroke="#cfd6cc"/><text x="670" y="217" text-anchor="middle" font-weight="700">frontend (Nginx)</text><text x="670" y="238" text-anchor="middle" font-size="14">route "/" · HPA 2–3</text>
+      <rect x="560" y="290" width="220" height="70" rx="10" fill="#fff" stroke="#cfd6cc"/><text x="670" y="317" text-anchor="middle" font-weight="700">backend (FastAPI)</text><text x="670" y="338" text-anchor="middle" font-size="14">route "/api" · HPA 2–3</text><text x="670" y="354" text-anchor="middle" font-size="12">initContainer: alembic upgrade</text>
+      <rect x="840" y="290" width="250" height="70" rx="10" fill="#fff" stroke="#cfd6cc"/><text x="965" y="317" text-anchor="middle" font-weight="700">PostgreSQL 17</text><text x="965" y="338" text-anchor="middle" font-size="14">StatefulSet + 1 Gi PVC</text>
+      <rect x="560" y="410" width="220" height="70" rx="10" fill="#fff" stroke="#cfd6cc"/><text x="670" y="437" text-anchor="middle" font-weight="700">Prometheus</text><text x="670" y="458" text-anchor="middle" font-size="14">ServiceMonitor · 3 alerts</text>
+      <rect x="840" y="410" width="250" height="70" rx="10" fill="#fff" stroke="#cfd6cc"/><text x="965" y="437" text-anchor="middle" font-weight="700">Grafana</text><text x="965" y="458" text-anchor="middle" font-size="14">"Kirana Ledger" dashboard</text>
+      <rect x="330" y="410" width="170" height="70" rx="10" fill="#fff" stroke="#cfd6cc"/><text x="415" y="437" text-anchor="middle" font-weight="700">Argo CD</text><text x="415" y="458" text-anchor="middle" font-size="14">GitOps sync</text>
+      <line x1="500" y1="220" x2="558" y2="220" stroke="#5f6b62" stroke-width="2" marker-end="url(#a)"/>
+      <path d="M500,232 C530,232 530,325 558,325" fill="none" stroke="#5f6b62" stroke-width="2" marker-end="url(#a)"/>
+      <line x1="780" y1="325" x2="838" y2="325" stroke="#5f6b62" stroke-width="2" marker-end="url(#a)"/>
+      <line x1="670" y1="360" x2="670" y2="408" stroke="#5f6b62" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#a)"/><text x="680" y="390" font-size="13" fill="#5f6b62">/metrics</text>
+      <line x1="780" y1="445" x2="838" y2="445" stroke="#5f6b62" stroke-width="2" marker-end="url(#a)"/>
+      <path d="M970,80 C970,120 760,120 690,188" fill="none" stroke="#5f6b62" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#a)"/><text x="860" y="122" font-size="13" fill="#5f6b62">pull by SHA</text>
+      <path d="M275,80 C275,330 300,440 328,445" fill="none" stroke="#5f6b62" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#a)"/><text x="200" y="330" font-size="13" fill="#5f6b62">watches main</text>
+    </g>
+  </svg>
+  <div class="footer"><span>Same chart runs on minikube (Argo CD), kind (CI deploy) and EKS (Terraform)</span><span>5</span></div>
+</section>
+
+<!-- 6 -->
+<section class="slide">
+  <div class="kicker">Backend · M1</div>
+  <h2>FastAPI + SQLAlchemy + Alembic</h2>
+  <div class="cols wide" style="margin-top:14px">
+    <table>
+      <tr><th>Method</th><th>Path</th><th>Purpose</th></tr>
+      <tr><td>GET</td><td><code>/health</code></td><td>liveness — never touches the DB</td></tr>
+      <tr><td>GET</td><td><code>/ready</code></td><td>readiness — <code>SELECT 1</code>, else 503</td></tr>
+      <tr><td>GET</td><td><code>/metrics</code></td><td>Prometheus + <code>kirana_ledger_entries_total</code></td></tr>
+      <tr><td>GET</td><td><code>/api/stats</code></td><td>KPIs + 7-day trend (IST)</td></tr>
+      <tr><td>GET</td><td><code>/api/entries</code></td><td><code>?type= ?q= ?customer= ?limit=</code></td></tr>
+      <tr><td>POST · PUT · DELETE</td><td><code>/api/entries/{id}</code></td><td>writes need <code>X-API-Key</code></td></tr>
+      <tr><td>GET</td><td><code>/api/customers[/{name}]</code></td><td>balances + reminder text</td></tr>
+    </table>
+    <div class="card">
+      <h3>Design choices</h3>
+      <ul class="b" style="font-size:19px">
+        <li>12 endpoints; Swagger at <code>/docs</code></li>
+        <li>Schema owned by Alembic migration <code>0001</code>, with CHECK constraints (<code>amount &gt; 0</code>, valid type)</li>
+        <li>Migrations run <b>once</b> (Compose one-shot service / K8s initContainer), not in every API process</li>
+        <li>Names normalised in the Pydantic schema, so every path stores "Ramesh"</li>
+        <li>Config only from env: ConfigMap + Secret</li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer"><span>application/backend/app/main.py</span><span>6</span></div>
+</section>
+
+<!-- 7 -->
+<section class="slide">
+  <div class="kicker">Testing · M2</div>
+  <h2>21 tests, 92 % coverage, first quality gate</h2>
+  <div class="cols" style="margin-top:14px">
+    <img class="shot dark" src="../screenshots/pytest.png" alt="pytest -v output" />
+    <div class="stack" style="display:flex;flex-direction:column;gap:16px">
+      <div class="card stat"><small>tests</small><span class="big pay">21 passed</span></div>
+      <div class="card stat"><small>coverage (CI fails below 80 %)</small><span class="big">91.6 %</span></div>
+      <div class="card">
+        <ul class="b" style="font-size:19px">
+          <li>Fresh SQLite DB per test via <code>dependency_overrides</code> — never production</li>
+          <li>Covers CRUD, balances, filters, stats, API-key auth, 404/422, metrics, seed data</li>
+          <li><code>flake8</code> + <code>pytest</code> fail → no image is built</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="footer"><span>application/backend/tests/</span><span>7</span></div>
+</section>
+
+<!-- 8 -->
+<section class="slide">
+  <div class="kicker">Docker · M4</div>
+  <h2>Small, non-root images and a one-command stack</h2>
+  <div class="cols" style="margin-top:14px">
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card"><h3>backend/Dockerfile</h3><p class="muted" style="margin:0;font-size:19px">2 stages: deps → <code>python:3.12-slim</code> · <code>apt-get upgrade</code> · <code>USER 10001</code> · no DB needed to boot</p></div>
+      <div class="card"><h3>frontend/Dockerfile</h3><p class="muted" style="margin:0;font-size:19px">2 stages: <code>node:22-alpine</code> builds <code>dist/</code> → <code>nginx-unprivileged</code> on 8080 · <code>USER 101</code> · Node never ships</p></div>
+      <div class="card"><h3>docker compose up --build</h3><p class="muted" style="margin:0;font-size:19px">postgres <span class="ok">healthy</span> → migrate <span class="ok">exits 0</span> → backend <span class="ok">healthy</span> → frontend on <code>:3000</code></p></div>
+    </div>
+    <img class="shot dark" src="../screenshots/compose.png" alt="docker compose output" />
+  </div>
+  <div class="footer"><span>docker/docker-compose.yml</span><span>8</span></div>
+</section>
+
+<!-- 9 -->
+<section class="slide">
+  <div class="kicker">CI/CD · M5</div>
+  <h2>Every push to main runs 10 stages</h2>
+  <div class="flow" style="margin-top:16px">
+    <div class="step"><b>1 Test</b>flake8 · pytest · cov ≥ 80 · npm build</div><span class="arrow">→</span>
+    <div class="step"><b>2–5 Scan code</b>Semgrep · pip-audit · npm audit · Gitleaks · Trivy config</div><span class="arrow">→</span>
+    <div class="step"><b>6 Build</b>2 tiers × amd64 / arm64 native runners</div><span class="arrow">→</span>
+    <div class="step"><b>7 Scan images</b>Trivy × 4</div><span class="arrow">→</span>
+    <div class="step gate"><b>8 Gate</b>all scans green or stop</div><span class="arrow">→</span>
+    <div class="step"><b>9 Push</b>GHCR multi-arch <code>:&lt;sha&gt;</code></div><span class="arrow">→</span>
+    <div class="step"><b>10 Deploy</b>Helm on kind + smoke test</div>
+  </div>
+  <div class="fill" style="margin-top:18px">
+    <img class="shot" src="../screenshots/pipeline.png" alt="GitHub Actions run" />
+  </div>
+  <div class="footer"><span>.github/workflows/s21-final.yml · tag = commit SHA, never "latest"</span><span>9</span></div>
+</section>
+
+<!-- 10 -->
+<section class="slide">
+  <div class="kicker">DevSecOps · M6</div>
+  <h2>Five scanners, one gate</h2>
+  <div class="cols wide" style="margin-top:14px">
+    <img class="shot dark" src="../screenshots/trivy.png" alt="Trivy summary" />
+    <div class="card">
+      <table style="font-size:18px">
+        <tr><th>Layer</th><th>Tool</th></tr>
+        <tr><td>SAST</td><td>Semgrep (python, fastapi, js, nginx, docker, secrets)</td></tr>
+        <tr><td>Dependencies</td><td>pip-audit · npm audit · Trivy fs</td></tr>
+        <tr><td>Secrets</td><td>Gitleaks over full git history</td></tr>
+        <tr><td>IaC</td><td>Trivy config · terraform validate · helm lint</td></tr>
+        <tr><td>Images</td><td>Trivy, fixable HIGH/CRITICAL → fail</td></tr>
+      </table>
+      <p style="font-size:18px;margin:14px 0 0"><b>Result:</b> 0 fixable HIGH/CRITICAL in all four images (Debian 13.7 + 31 Python packages; Alpine 3.23.4). "Clean" means nothing known <i>and fixable</i> today — so it runs on every push.</p>
+    </div>
+  </div>
+  <div class="footer"><span>security/trivy.yaml · security/.gitleaks.toml</span><span>10</span></div>
+</section>
+
+<!-- 11 -->
+<section class="slide">
+  <div class="kicker">Terraform · M7</div>
+  <h2>AWS infrastructure as code</h2>
+  <div class="cols" style="margin-top:14px">
+    <div class="card">
+      <ul class="b" style="font-size:20px">
+        <li><b>network.tf</b> — VPC, 2 public + 2 private subnets in 2 AZs, IGW, NAT, route tables</li>
+        <li><b>eks.tf</b> — EKS cluster (secrets encrypted with KMS), managed node group <code>t3.medium</code> 2–4, EBS CSI add-on, IAM roles</li>
+        <li><b>ecr.tf</b> — image repo + lifecycle policy</li>
+        <li><b>terraform.tfvars.example</b> only — real vars are gitignored</li>
+        <li>CI: <code>fmt -check</code> · <code>validate</code> · Trivy config scan</li>
+      </ul>
+    </div>
+    <img class="shot dark" src="../screenshots/terraform-plan.png" alt="terraform plan" />
+  </div>
+  <div class="footer"><span>terraform/ · region ap-south-1 · Plan: 26 to add · always terraform destroy</span><span>11</span></div>
+</section>
+
+<!-- 12 -->
+<section class="slide">
+  <div class="kicker">Kubernetes + Helm · M8</div>
+  <h2>One chart: Deployments, StatefulSet, Ingress, HPA</h2>
+  <div class="cols" style="margin-top:14px">
+    <img class="shot dark" src="../screenshots/k8s-cluster.png" alt="kubectl get pods,svc,ingress,hpa" />
+    <img class="shot" src="../screenshots/k8s-ingress-after.png" alt="App through the Ingress" />
+  </div>
+  <div class="footer"><span>helm/kirana · liveness /health · readiness /ready · startup probe · requests/limits · Secret never in Git</span><span>12</span></div>
+</section>
+
+<!-- 13 -->
+<section class="slide">
+  <div class="kicker">Observability · M9</div>
+  <h2>Prometheus scrapes it, Grafana shows it</h2>
+  <div class="fill" style="margin-top:14px">
+    <img class="shot" src="../screenshots/prometheus-targets.png" alt="Prometheus targets UP" style="flex:1" />
+    <img class="shot dark" src="../screenshots/grafana-kirana.png" alt="Grafana dashboard" style="flex:1.3" />
+  </div>
+  <div class="footer"><span>ServiceMonitor · alerts KiranaBackendDown / HighErrorRate / SlowRequests · 6-panel dashboard shipped in the chart</span><span>13</span></div>
+</section>
+
+<!-- 14 -->
+<section class="slide">
+  <div class="kicker">Autoscaling</div>
+  <h2>HPA: 2 → 3 backend Pods under load</h2>
+  <div class="cols wide" style="margin-top:14px">
+    <img class="shot dark" src="../screenshots/hpa-scale.png" alt="HPA scale event" />
+    <div class="card">
+      <ul class="b" style="font-size:20px">
+        <li>~2.5 min of traffic through the Ingress</li>
+        <li>CPU <b class="udhar">150 %</b> of request vs <b>60 %</b> target</li>
+        <li>Event: <i>"New size: 3; reason: cpu resource utilization above target"</i></li>
+        <li>Max is 3 on minikube (8 GB laptop), 5 on EKS</li>
+        <li>Needs <b>resource requests</b> + <b>metrics-server</b></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer"><span>helm/kirana/templates/hpa.yaml</span><span>14</span></div>
+</section>
+
+<!-- 15 -->
+<section class="slide">
+  <div class="kicker">Live demo · M10</div>
+  <h2>Commit → pipeline → cluster updates itself</h2>
+  <div class="cols wide" style="margin-top:14px">
+    <div class="timeline" id="tl"><span class="hl">f67ab0f</span>  release 2.1.0 pushed       → pipeline <span class="hl">13/13 green</span>
+<span class="hl">dad5b99</span>  promote f67ab0f (1 line)  → Argo CD syncs
+         new Pods: <span class="bad">exec format error</span>   (old Pods keep serving)
+         cause: CI built amd64, Mac minikube is arm64
+<span class="hl">3d274a5</span>  multi-arch build fix       → pipeline green, :sha = amd64+arm64
+<span class="hl">promote</span>  values-minikube → new SHA   → Argo CD rolls 2.0.0 → 2.1.0
+         <span class="hl">0 downtime · same image CI scanned</span></div>
+    <div style="display:flex;flex-direction:column;gap:14px;min-height:0">
+      <img class="shot" src="../screenshots/k8s-ingress-before.png" alt="before: 2.0.0" style="flex:1" />
+      <img class="shot" src="../screenshots/k8s-ingress-after.png" alt="after: 2.1.0" style="flex:1" />
+    </div>
+  </div>
+  <div class="footer"><span>output-gitops-rollout.txt · output-incident-arch.txt — the incident was real, not staged</span><span>15</span></div>
+</section>
+
+<!-- 16 -->
+<section class="slide">
+  <div class="kicker">Troubleshooting</div>
+  <h2>Two real incidents, two lessons</h2>
+  <div class="cols" style="margin-top:14px">
+    <div class="card">
+      <h3>1 · Postgres CrashLoopBackOff</h3>
+      <p class="muted" style="font-size:18px">8 GB node at 419 % CPU; <code>pg_isready</code> with a 1 s liveness timeout timed out → kubelet kept killing a <i>healthy</i> database → every API Pod 0/1.</p>
+      <p style="font-size:18px"><b>Fix:</b> patient DB liveness (30 s delay, 5 s timeout, 6 failures), configurable probe timeouts, API boots without DB, HPA max 3.</p>
+      <p style="font-size:18px"><b>Lesson:</b> liveness restarts; readiness only removes from the Service.</p>
+    </div>
+    <div class="card">
+      <h3>2 · exec format error</h3>
+      <p class="muted" style="font-size:18px">GitOps rollout to the Apple Silicon node crash-looped: images were <code>linux/amd64</code>, node is <code>arm64</code>.</p>
+      <p style="font-size:18px"><b>Fix:</b> build each tier on native amd64 + arm64 runners, scan all 4, publish one multi-arch tag per SHA.</p>
+      <p style="font-size:18px"><b>Lesson:</b> the rolling update protected users — new Pods never got Ready, old ones kept serving.</p>
+    </div>
+  </div>
+  <div class="footer"><span>describe → events → logs → fix → verify</span><span>16</span></div>
+</section>
+
+<!-- 17 -->
+<section class="slide dark">
+  <div class="kicker">Wrap-up</div>
+  <h2>What I'd do next in production</h2>
+  <div class="cols" style="margin-top:18px">
+    <ul class="b">
+      <li>Amazon RDS instead of Postgres in the cluster (backups, failover)</li>
+      <li>CI writes the promotion commit itself (Argo CD Image Updater)</li>
+      <li>Sealed Secrets / External Secrets for the API key</li>
+      <li>cert-manager TLS on the Ingress</li>
+    </ul>
+    <ul class="b">
+      <li>Remote Terraform state (S3 + DynamoDB lock)</li>
+      <li>Alertmanager → Slack/WhatsApp</li>
+      <li>Load test in CI with SLO checks (p95 &lt; 300 ms)</li>
+      <li>Voice input for shopkeepers (Hindi + English)</li>
+    </ul>
+  </div>
+  <div style="margin-top:auto">
+    <h1 style="font-size:56px">धन्यवाद · Thank you</h1>
+    <p class="muted">Questions? · <span class="mono">session-21-final-devops-project/</span></p>
+  </div>
+</section>
+
+</div>
+<div class="nav" id="navhint">← → to move · F fullscreen</div>
+<script>
+  const slides = [...document.querySelectorAll(".slide")];
+  let i = Math.max(0, Math.min(slides.length - 1, (parseInt(location.hash.slice(1), 10) || 1) - 1));
+  function fit() {
+    const s = Math.min(innerWidth / 1280, innerHeight / 720);
+    slides.forEach((el) => (el.style.transform = `translate(-50%, -50%) scale(${s})`));
+  }
+  function show(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((el, k) => el.classList.toggle("active", k === i));
+    history.replaceState(null, "", "#" + (i + 1));
+    document.getElementById("navhint").textContent = `${i + 1} / ${slides.length} · ← → · F fullscreen`;
+  }
+  addEventListener("keydown", (e) => {
+    if (["ArrowRight", "PageDown", " "].includes(e.key)) show(i + 1);
+    if (["ArrowLeft", "PageUp"].includes(e.key)) show(i - 1);
+    if (e.key === "Home") show(0);
+    if (e.key === "End") show(slides.length - 1);
+    if (e.key === "f") document.documentElement.requestFullscreen?.();
+  });
+  addEventListener("click", (e) => { if (!e.target.closest("a")) show(e.clientX > innerWidth / 2 ? i + 1 : i - 1); });
+  addEventListener("resize", fit);
+  fit(); show(i);
+</script>
+</body>
+</html>
